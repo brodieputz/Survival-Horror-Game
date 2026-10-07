@@ -1,7 +1,7 @@
 // Turns the dungeon grid into renderable geometry, and answers spatial
 // queries: collision, line of sight, raycasts and A* path-finding.
 import * as THREE from 'three';
-import { TILE, WALL_H, PIT_DEPTH, T } from './config.js';
+import { TILE, WALL_H, PIT_DEPTH, T, EDGE, DOOR_W, DOOR_H } from './config.js';
 import { tex } from './textures.js';
 import { macroVary } from './atmos.js';
 import { MinHeap } from './util.js';
@@ -53,6 +53,52 @@ function wallQuad(batch, tx, ty, fx, fz, y0, y1, vScale = 1 / TILE) {
   batch.quad(A, B, C, D, [-fx, 0, -fz], 0, y0 * vScale, 1, y1 * vScale);
 }
 
+// A thin interior wall on the edge of tile (tx,ty) toward (fx,fz), seen from
+// inside the tile, set back half the wall's thickness. Doorways leave a gap
+// with jambs, a lintel and a painted frame.
+const HALF = 0.1;
+function thinWall(batch, trim, tx, ty, fx, fz, door) {
+  const cx = (tx + 0.5) * TILE + (fx * TILE) / 2 - fx * HALF;
+  const cz = (ty + 0.5) * TILE + (fz * TILE) / 2 - fz * HALF;
+  const rx = -fz;
+  const rz = fx;
+  const n = [-fx, 0, -fz];
+  const seg = (s0, s1, y0, y1, b = batch) => {
+    const A = [cx + rx * s0, y0, cz + rz * s0];
+    const B = [cx + rx * s1, y0, cz + rz * s1];
+    const C = [cx + rx * s1, y1, cz + rz * s1];
+    const D = [cx + rx * s0, y1, cz + rz * s0];
+    b.quad(A, B, C, D, n, (s0 + TILE / 2) / TILE, y0 / TILE, (s1 + TILE / 2) / TILE, y1 / TILE);
+  };
+  const h = TILE / 2;
+  if (!door) return seg(-h, h, 0, WALL_H);
+  const g = DOOR_W / 2;
+  seg(-h, -g, 0, WALL_H);
+  seg(g, h, 0, WALL_H);
+  seg(-g, g, DOOR_H, WALL_H);
+  // the opening's reveals (jamb sides and the lintel's underside)
+  for (const s of [-g, g]) {
+    const sx = cx + rx * s;
+    const sz = cz + rz * s;
+    const nn = [rx * -Math.sign(s), 0, rz * -Math.sign(s)];
+    trim.quad([sx, 0, sz], [sx + fx * HALF, 0, sz + fz * HALF], [sx + fx * HALF, DOOR_H, sz + fz * HALF], [sx, DOOR_H, sz], nn, 0, 0, 0.1, 1);
+  }
+  const a = [cx - rx * g, DOOR_H, cz - rz * g];
+  const b = [cx + rx * g, DOOR_H, cz + rz * g];
+  trim.quad(a, b, [b[0] + fx * HALF, DOOR_H, b[2] + fz * HALF], [a[0] + fx * HALF, DOOR_H, a[2] + fz * HALF], [0, -1, 0], 0, 0, 1, 0.1);
+  // a painted frame around the opening
+  const f = 0.09;
+  const fo = 0.012;
+  const fcx = cx - fx * fo;
+  const fcz = cz - fz * fo;
+  const fq = (s0, s1, y0, y1) => {
+    trim.quad([fcx + rx * s0, y0, fcz + rz * s0], [fcx + rx * s1, y0, fcz + rz * s1], [fcx + rx * s1, y1, fcz + rz * s1], [fcx + rx * s0, y1, fcz + rz * s0], n, 0, 0, 0.2, 1);
+  };
+  fq(-g - f, -g, 0, DOOR_H + f);
+  fq(g, g + f, 0, DOOR_H + f);
+  fq(-g, g, DOOR_H, DOOR_H + f);
+}
+
 export class World {
   // d: { W, H, tiles, blocked, roomOf?, theme? }
   // opts.render=false builds no geometry (the camp draws its own terrain).
@@ -62,11 +108,63 @@ export class World {
     this.W = d.W;
     this.H = d.H;
     this.tiles = d.tiles;
+    // thin interior walls on tile edges: edgeE[i] sits between tile i and
+    // its east neighbour, edgeS[i] between tile i and its south neighbour
+    this.edgeE = d.edgeE || null;
+    this.edgeS = d.edgeS || null;
     this.outdoor = !!opts.outdoor;
     this.group = new THREE.Group();
     this.props = new Map(); // tile index -> array of AABB colliders
     this.materials = {};
     if (opts.render !== false) this.buildGeometry();
+    if (this.edgeE) this.buildEdgeColliders();
+  }
+
+  // The edge code between tile (x, y) and its neighbour (x+dx, y+dy).
+  edge(x, y, dx, dy) {
+    if (!this.edgeE) return EDGE.NONE;
+    const W = this.W;
+    if (dx > 0) return this.edgeE[y * W + x];
+    if (dx < 0) return x > 0 ? this.edgeE[y * W + x - 1] : EDGE.NONE;
+    if (dy > 0) return this.edgeS[y * W + x];
+    if (dy < 0) return y > 0 ? this.edgeS[(y - 1) * W + x] : EDGE.NONE;
+    return EDGE.NONE;
+  }
+  // Can something walk straight from tile (x, y) into its neighbour?
+  passable(x, y, dx, dy) {
+    const e = this.edge(x, y, dx, dy);
+    return e === EDGE.NONE || e === EDGE.DOOR;
+  }
+
+  // Thin walls and the jambs either side of every doorway are solid.
+  buildEdgeColliders() {
+    const W = this.W;
+    const h = 0.12;
+    const j = (TILE - DOOR_W) / 2;
+    const add = (vertical, x, y, code) => {
+      if (code === EDGE.NONE) return;
+      if (vertical) {
+        // the edge at x = (x+1)*TILE, from z = y*TILE to (y+1)*TILE
+        const ex = (x + 1) * TILE;
+        const z0 = y * TILE;
+        if (code === EDGE.DOOR || code === EDGE.GATE) {
+          this.addCollider(ex - h, z0, ex + h, z0 + j);
+          this.addCollider(ex - h, z0 + TILE - j, ex + h, z0 + TILE);
+        } else this.addCollider(ex - h, z0, ex + h, z0 + TILE);
+      } else {
+        const ez = (y + 1) * TILE;
+        const x0 = x * TILE;
+        if (code === EDGE.DOOR || code === EDGE.GATE) {
+          this.addCollider(x0, ez - h, x0 + j, ez + h);
+          this.addCollider(x0 + TILE - j, ez - h, x0 + TILE, ez + h);
+        } else this.addCollider(x0, ez - h, x0 + TILE, ez + h);
+      }
+    };
+    for (let y = 0; y < this.H; y++)
+      for (let x = 0; x < W; x++) {
+        add(true, x, y, this.edgeE[y * W + x]);
+        add(false, x, y, this.edgeS[y * W + x]);
+      }
   }
 
   t(x, y) {
@@ -84,6 +182,13 @@ export class World {
     const t = this.t(x, y);
     return (t === T.FLOOR || t === T.YARD) && !this.d.blocked[y * this.W + x];
   }
+  // A monster can step from (x, y) by (ox, oy), diagonals included.
+  stepOk(x, y, ox, oy) {
+    if (!this.edgeE) return true;
+    if (!ox || !oy) return this.passable(x, y, ox, oy);
+    // a diagonal needs both of the L-shaped routes around the corner open
+    return this.passable(x, y, ox, 0) && this.passable(x + ox, y, 0, oy) && this.passable(x, y, 0, oy) && this.passable(x, y + oy, ox, 0);
+  }
 
   buildGeometry() {
     const d = this.d;
@@ -96,7 +201,18 @@ export class World {
       yard: new QuadBatch(),
       outside: new QuadBatch(),
       pit: new QuadBatch(),
+      trim: new QuadBatch(),
     };
+    // rooms can have their own wall and floor finishes ("name:seed" keys)
+    const styled = {};
+    const batchFor = (key) => {
+      if (!batches[key]) {
+        batches[key] = new QuadBatch();
+        styled[key] = true;
+      }
+      return batches[key];
+    };
+    const style = (room) => (d.roomStyle && room >= 0 ? d.roomStyle[room] : null);
     // rock outside the building's outline is open ground (lawns, verges)
     const sh = d.shell;
     const inShell = (x, y) => sh && x >= sh.x0 && x <= sh.x1 && y >= sh.y0 && y <= sh.y1;
@@ -105,7 +221,7 @@ export class World {
       for (let x = 0; x < this.W; x++) {
         const t = this.t(x, y);
         if (t === T.ROCK) {
-          if (sh && !inShell(x, y)) {
+          if (sh && !inShell(x, y) && !d.upper) {
             const x0 = x * TILE;
             const z0 = y * TILE;
             batches.outside.quad([x0, 0, z0], [x0, 0, z0 + TILE], [x0 + TILE, 0, z0 + TILE], [x0 + TILE, 0, z0], [0, 1, 0]);
@@ -119,11 +235,12 @@ export class World {
         const x1 = x0 + TILE;
         const z1 = z0 + TILE;
         const fy = t === T.PIT ? -PIT_DEPTH : 0;
-        const fb = yard ? batches.yard : t === T.PIT ? batches.pit : batches.floor;
+        const st = style(room);
+        const fb = yard ? batches.yard : t === T.PIT ? batches.pit : st?.floor ? batchFor(st.floor) : batches.floor;
         fb.quad([x0, fy, z0], [x0, fy, z1], [x1, fy, z1], [x1, fy, z0], [0, 1, 0]);
         if (!yard) batches.ceil.quad([x0, WALL_H, z0], [x1, WALL_H, z0], [x1, WALL_H, z1], [x0, WALL_H, z1], [0, -1, 0]);
         if (yard) continue; // the lot is open: fences and the facade are props
-        const wb = room > 0 && room % 3 === 0 ? batches.wall2 : batches.wall;
+        const wb = st?.wall ? batchFor(st.wall) : room > 0 && room % 3 === 0 ? batches.wall2 : batches.wall;
         for (const [fx, fz] of [
           [1, 0],
           [-1, 0],
@@ -138,6 +255,18 @@ export class World {
           }
           wallQuad(wb, x, y, fx, fz, t === T.PIT ? -PIT_DEPTH : 0, WALL_H);
         }
+        // thin walls and doorways on this tile's edges, faced from this side
+        if (this.edgeE)
+          for (const [fx, fz] of [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+          ]) {
+            const e = this.edge(x, y, fx, fz);
+            if (e === EDGE.NONE || this.t(x + fx, y + fz) === T.ROCK) continue;
+            thinWall(wb, batches.trim, x, y, fx, fz, e !== EDGE.WALL);
+          }
       }
 
     const mk = (texture, color = 0xffffff, rough = 0.9) => {
@@ -146,6 +275,7 @@ export class World {
       return new THREE.MeshStandardMaterial({ map: t2, color, roughness: rough, metalness: 0, shadowSide: THREE.DoubleSide });
     };
     const mats = {
+      trim: mk(tex('wood', 5), 0x6a4a30, 0.7),
       wall: mk(tex(theme.wall || 'brick', 1)),
       wall2: mk(tex(theme.wall2 || 'stoneBlocks', 2)),
       floor: mk(tex(theme.floor || 'floor', 3)),
@@ -154,13 +284,17 @@ export class World {
       outside: macroVary(mk(tex(theme.outside || 'grass', 31))),
       pit: mk(tex('stoneBlocks', 2), 0x664444),
     };
+    for (const key in styled) {
+      const [name, seed] = key.split(':');
+      mats[key] = mk(tex(name, seed === undefined ? undefined : +seed));
+    }
     this.materials = mats;
     for (const k in batches) {
       if (!batches[k].pos.length) continue;
       const mesh = new THREE.Mesh(batches[k].build(), mats[k]);
       mesh.receiveShadow = true;
       // walls and ceilings keep the sun out of the interior
-      mesh.castShadow = k === 'wall' || k === 'wall2' || k === 'ceil';
+      mesh.castShadow = k !== 'floor' && k !== 'yard' && k !== 'outside' && k !== 'pit' && !k.startsWith('floor');
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();
       this.group.add(mesh);
@@ -238,7 +372,7 @@ export class World {
   }
 
   // Distance along the ray (ax,az)->(bx,bz) until a rock tile is hit (capped at segment length).
-  rayDist(ax, az, bx, bz) {
+  rayDist(ax, az, bx, bz, margin = 0) {
     const dx = bx - ax;
     const dz = bz - az;
     const len = Math.hypot(dx, dz);
@@ -254,18 +388,31 @@ export class World {
     let tMaxX = ux !== 0 ? ((ux > 0 ? (x + 1) * TILE : x * TILE) - ax) / ux : Infinity;
     let tMaxY = uz !== 0 ? ((uz > 0 ? (y + 1) * TILE : y * TILE) - az) / uz : Infinity;
     let t = 0;
+    const edges = !!this.edgeE;
+    const half = DOOR_W / 2 - margin;
     for (let i = 0; i < 256; i++) {
       if (this.t(x, y) === T.ROCK) return t;
       if (tMaxX < tMaxY) {
         t = tMaxX;
+        if (t > len) return len;
+        if (edges) {
+          const e = this.edge(x, y, stepX, 0);
+          if (e === EDGE.WALL || e === EDGE.GATE) return t;
+          if (e === EDGE.DOOR && Math.abs(az + uz * t - (y + 0.5) * TILE) > half) return t;
+        }
         tMaxX += tDeltaX;
         x += stepX;
       } else {
         t = tMaxY;
+        if (t > len) return len;
+        if (edges) {
+          const e = this.edge(x, y, 0, stepY);
+          if (e === EDGE.WALL || e === EDGE.GATE) return t;
+          if (e === EDGE.DOOR && Math.abs(ax + ux * t - (x + 0.5) * TILE) > half) return t;
+        }
         tMaxY += tDeltaY;
         y += stepY;
       }
-      if (t > len) return len;
     }
     return len;
   }
@@ -338,6 +485,7 @@ export class World {
           const ny = cy + oy;
           if (!goalOk(nx, ny)) continue;
           if (ox && oy && (!this.walkableForMonster(cx + ox, cy) || !this.walkableForMonster(cx, cy + oy))) continue;
+          if (!this.stepOk(cx, cy, ox, oy)) continue;
           const ni = ny * W + nx;
           const ng = gc + (ox && oy ? 1.414 : 1);
           if (ng < (g.get(ni) ?? Infinity)) {
@@ -366,6 +514,7 @@ export class World {
   // Straight line is clear for a monster of radius r (samples tiles along the segment).
   clearLine(ax, az, bx, bz, r) {
     const len = Math.hypot(bx - ax, bz - az);
+    if (this.edgeE && this.rayDist(ax, az, bx, bz, r) < len - 1e-3) return false;
     const steps = Math.ceil(len / 0.5);
     for (let i = 0; i <= steps; i++) {
       const t = i / Math.max(1, steps);

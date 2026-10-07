@@ -1,10 +1,10 @@
 // Survivor NPCs: idle around camp by day, hold the barricade at night and
 // follow the player through buildings. They never run out of ammo.
 import * as THREE from 'three';
-import { makeHuman } from './actors.js';
+import { makeHuman, makeDog } from './actors.js';
 import { makeGunModel } from './gunModels.js';
 import { WEAPONS, weaponStats, isExplosive } from './weapons.js';
-import { survivorSpeed, survivorAim, weaponByUid, removeWeapon } from './run.js';
+import { survivorSpeed, survivorAim, weaponByUid, removeWeapon, DOG_BITE } from './run.js';
 import { dist2D, dampAngle, angleDiff, clamp } from './util.js';
 
 const FISTS = { dmg: 9, range: 1.6, rate: 1.3, mag: 0, reload: 0, spread: 0, pellets: 1, def: { cat: 'melee', name: 'Fists', sound: 'melee' } };
@@ -20,7 +20,9 @@ export class SurvivorActor {
     this.mode = mode; // 'camp' | 'defend' | 'follow' | 'found'
     this.home = { x, z };
     this.post = null;
-    this.model = makeHuman(rec.look);
+    this.dog = !!rec.dog;
+    this.model = this.dog ? makeDog(rec.look) : makeHuman(rec.look);
+    if (this.dog) this.radius = 0.3;
     this.root = this.model.root;
     (group || game.level.group).add(this.root);
     this.phase = Math.random() * 6;
@@ -50,6 +52,15 @@ export class SurvivorActor {
   }
 
   equip() {
+    if (this.dog) {
+      // teeth: quick, hard bites up close
+      this.stats = { dmg: DOG_BITE(this.rec), range: 1.5, rate: 1.5, mag: 0, reload: 0, spread: 0, pellets: 1, def: { cat: 'melee', name: 'Bite', sound: 'melee' } };
+      this.mag = 0;
+      this.melee = true;
+      this.explosive = false;
+      this.flameT = 0;
+      return;
+    }
     if (this.gun) this.model.gunMount.remove(this.gun.group);
     this.gun = null;
     const run = this.game.run;
@@ -191,7 +202,8 @@ export class SurvivorActor {
       if (d > s.range + target.radius) return;
       this.cd = 1 / s.rate;
       this.attackAnim = 1;
-      g.audio.swing?.(this.pos);
+      if (this.dog) g.audio.bark?.(this.pos, true);
+      else g.audio.swing?.(this.pos);
       target.hit(s.dmg, this, { melee: true });
       g.particles.burst(new THREE.Vector3(target.pos.x, 1.1, target.pos.z), 10, 0x7a0000, 2.5);
       return;
@@ -387,6 +399,7 @@ export class SurvivorActor {
 
   // ------------------------------------------------------------ animation
   sync(dt, aiming) {
+    if (this.dog) return this.syncDog(dt);
     const m = this.model;
     this.root.position.set(this.pos.x, 0, this.pos.z);
     this.root.rotation.y = this.yaw;
@@ -425,6 +438,53 @@ export class SurvivorActor {
     m.head.rotation.x = aiming ? 0.1 : 0;
     if (this.gun?.spin) this.gun.spin.rotation.z += dt * (aiming ? 30 : 0);
     void angleDiff;
+  }
+
+  syncDog(dt) {
+    const m = this.model;
+    const g = this.game;
+    this.root.position.set(this.pos.x, 0, this.pos.z);
+    this.root.rotation.y = this.yaw;
+    if (!this.alive) {
+      // rolls onto its side
+      const t = Math.min(1, this.deadT / 0.6);
+      m.body.rotation.z = t * 1.45;
+      m.body.position.y = m.shoulder * (1 - t * 0.7);
+      return;
+    }
+    // bark at the dead when they come near
+    this.barkCd = (this.barkCd ?? Math.random() * 3) - dt;
+    if (this.barkCd <= 0) {
+      this.barkCd = 1.6 + Math.random() * 2.5;
+      const near = g.level.enemies.some((e) => e.alive && dist2D(e.pos.x, e.pos.z, this.pos.x, this.pos.z) < 14);
+      if (near && this.mode !== 'found') g.audio.bark?.(this.pos, false);
+    }
+    const sp = this.speedNow;
+    const gallop = sp > 4;
+    this.phase += dt * (gallop ? 11 : 2.6 * Math.max(sp, 0.01) + (sp > 0.1 ? 3 : 0));
+    const amp = Math.min(1, sp / 3) * (gallop ? 0.85 : 0.55);
+    for (const leg of m.legs) {
+      // a walk moves diagonal pairs together; a gallop moves front and back pairs
+      const off = gallop ? (leg.front ? 0 : Math.PI) + leg.s * 0.4 : (leg.front ? 0 : Math.PI) + (leg.s > 0 ? Math.PI : 0);
+      const s = Math.sin(this.phase + off);
+      leg.hip.rotation.x = s * amp;
+      leg.knee.rotation.x = (leg.front ? -1 : 1) * Math.max(0, -s) * amp * 0.9;
+    }
+    const sitting = this.mode === 'found' || (sp < 0.05 && this.mode === 'camp');
+    const sit = (this.sitT = Math.max(0, Math.min(1, (this.sitT || 0) + (sitting ? dt : -dt * 3) * 2)));
+    m.body.rotation.x = -sit * 0.5 + (gallop ? Math.sin(this.phase) * 0.06 : 0);
+    m.body.position.y = m.shoulder - sit * 0.12 + (gallop ? Math.abs(Math.sin(this.phase)) * 0.05 : Math.abs(Math.sin(this.phase * 2)) * 0.01);
+    for (const leg of m.legs) if (!leg.front && sit > 0) leg.hip.rotation.x += sit * 1.2;
+    // the tail wags; faster with the player close by
+    const p = g.player;
+    const happy = dist2D(this.pos.x, this.pos.z, p.pos.x, p.pos.z) < 4 ? 1 : 0.4;
+    m.tail.rotation.y = Math.sin(g.time * (6 + 8 * happy)) * 0.45 * happy;
+    m.tail.rotation.x = this.target ? -0.2 : -0.5 * happy;
+    // a lunge and a snap when it bites
+    const a = this.attackAnim;
+    m.neck.rotation.x = -a * 0.5 + (this.hurtT > 0 ? 0.3 : 0);
+    m.jaw.rotation.x = a * 0.6 + (this.target ? 0.12 + Math.sin(g.time * 20) * 0.05 : 0);
+    m.head.rotation.y = this.mode === 'found' ? Math.sin(g.time * 0.7) * 0.3 : 0;
   }
 
   dispose() {

@@ -613,6 +613,21 @@ export class AudioSys {
         break;
     }
   }
+  // a dog's bark (or a snarl as it bites)
+  bark(pos, bite = false) {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(pos, bite ? 0.8 : 1.0, { reverb: 0.25 });
+    const n = bite ? 1 : 1 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) {
+      const t0 = t + i * 0.22;
+      const f = 380 + Math.random() * 120;
+      this.osc('sawtooth', f, t0, 0.12, o, { gain: 0.22, f1: f * 0.55 });
+      this.noise(t0, 0.1, o, { freq: 900, Q: 1.6, gain: 0.3, f1: 500 });
+      if (bite) this.noise(t0 + 0.05, 0.25, o, { freq: 300, Q: 1, gain: 0.25 });
+    }
+  }
+
   swing(pos = null) {
     if (!this.ok()) return;
     const o = this.out(pos, 0.6, { reverb: 0.05 });

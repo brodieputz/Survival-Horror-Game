@@ -645,7 +645,7 @@ export function buildExterior(scene) {
   deco(post, d.exit.x, d.exit.z);
   world.addCollider(d.exit.x - 0.1, d.exit.z - 0.1, d.exit.x + 0.1, d.exit.z + 0.1);
 
-  scene.group.add(group);
+  (scene.fgroup || scene.group).add(group);
   return { exit: { x: d.exit.x, z: d.exit.z, glow } };
 }
 

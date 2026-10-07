@@ -13,6 +13,16 @@ export const T = {
   PIT: 4, // spike pit
 };
 
+// Thin walls between rooms sit on tile edges
+export const EDGE = {
+  NONE: 0,
+  WALL: 1,
+  DOOR: 2, // an open doorway
+  GATE: 3, // a locked gate (needs a key)
+};
+export const DOOR_W = 1.5; // doorway width (m)
+export const DOOR_H = 2.3;
+
 export const PLAYER = {
   radius: 0.35,
   eye: 1.68, // same eye line as survivors and zombies (1.8 m tall)
@@ -49,6 +59,7 @@ export const NOISE = {
 export const DAY_HOURS = 12;
 export const MAX_SURVIVORS = 8;
 export const TRAVEL_HOURS = 4;
+export const BATTERY_LIFE = 240; // seconds of flashlight per battery
 
 export const BARRICADE = {
   baseHp: 300,

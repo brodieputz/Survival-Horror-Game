@@ -270,17 +270,44 @@ class Game {
       this.refreshViewModel();
       this.level.assignLights(this.torchLights, p.pos.x, p.pos.z);
       const L = R.LOCATION_TYPES[loc.type];
-      this.ui.banner(loc.name.toUpperCase(), `${L.name} · danger ${'☠'.repeat(loc.difficulty)}`, 3.5);
+      const floors = this.level.nFloors > 1 ? ` · ${this.level.nFloors} floors` : '';
+      this.ui.banner(loc.name.toUpperCase(), `${L.name}${floors} · danger ${'☠'.repeat(loc.difficulty)}`, 3.5);
       this.audio.setMode('explore');
       this.input.lock();
       this.playShot(this.arrivalShot());
     });
   }
 
+  // Take the stairs to the floor above (dir 1) or below (-1).
+  useStairs(dir) {
+    const lvl = this.level;
+    const to = lvl.floorIdx + dir;
+    if (lvl.kind !== 'building' || to < 0 || to >= lvl.nFloors) return;
+    this.audio.playerStep('wood', 1);
+    this.transition(
+      () => {
+        this.combat.clear();
+        lvl.setFloor(to);
+        const p = this.player;
+        const sp = lvl.d.stairs.spot;
+        p.spawn(sp);
+        p.crouch = false;
+        lvl.bringCompanions(sp.x, sp.z);
+        this.setEnvironment();
+        lvl.assignLights(this.torchLights, p.pos.x, p.pos.z);
+        this.updateCamera(0);
+        this.ui.banner(lvl.floorName.toUpperCase(), lvl.loc.name, 2);
+        this.input.lock();
+      },
+      0.35,
+      0.6
+    );
+  }
+
   leaveBuilding() {
     const run = this.run;
     const trip = this.trip;
-    trip.loc.searched = true;
+    R.finishSearch(trip.loc);
     run.stats.searched++;
     this.transition(() => {
       this.enterCamp('table');
@@ -289,6 +316,9 @@ class Game {
       if (trip.found.length) lines.push({ kind: 'good', text: `Found: ${R.summarizeItems(trip.found).join(', ')}.` });
       else lines.push({ kind: 'muted', text: 'You came back empty-handed.' });
       for (const n of trip.recruits) lines.push({ kind: 'good', text: `${n} joined the camp.` });
+      for (const k of trip.keys || []) lines.push({ kind: 'gold', text: `You have the ${k}.` });
+      const lk = trip.loc.lock;
+      if (lk && !lk.opened && lk.seen) lines.push({ kind: 'gold', text: `The ${lk.vault} is still locked. You can come back once you have the key.` });
       for (const n of trip.lost) lines.push({ kind: 'bad', text: `${n} didn't make it.` });
       if (trip.kills) lines.push({ text: `Zombies put down: ${trip.kills}.` });
       this.trip = null;
@@ -586,7 +616,7 @@ class Game {
       case 'give': {
         const s = survivor(ds.id);
         const inst = R.weaponByUid(run, P.sel);
-        if (!s || !inst) break;
+        if (!s || !inst || s.dog) break;
         R.unassign(run, inst.uid);
         s.weapon = inst.uid;
         this.afterGearChange();
@@ -624,7 +654,7 @@ class Game {
       }
       case 'sgive': {
         const s = survivor(P.arg);
-        if (!s) break;
+        if (!s || s.dog) break;
         R.unassign(run, +ds.uid);
         s.weapon = +ds.uid;
         this.afterGearChange();
@@ -696,7 +726,7 @@ class Game {
       case 'send': {
         const s = survivor(ds.id);
         const loc = run.locality.locations.find((l) => l.id === P.sel);
-        if (!s || !loc || loc.searched || loc.claimed || s.status !== 'camp') break;
+        if (!s || !loc || loc.searched || loc.claimed || s.status !== 'camp' || s.dog) break;
         run.expeditions.push({ survivorId: s.id, locId: loc.id });
         s.status = 'away';
         loc.claimed = true;
@@ -1039,6 +1069,15 @@ class Game {
       case 'exit':
         this.leaveBuilding();
         break;
+      case 'item':
+        this.level.takePickup(best.obj);
+        break;
+      case 'stairs':
+        this.useStairs(best.dir);
+        break;
+      case 'gate':
+        this.level.useGate(best.obj);
+        break;
       case 'tent':
         this.requestSleep();
         break;
@@ -1208,7 +1247,13 @@ class Game {
       else this.lightFlicker = 0;
     } else fl = Math.random() < 0.5 ? 0.15 : 0.7;
     const dayCamp = lvl.kind === 'camp' && this.run.phase === 'day';
-    this.flashlight.intensity = p.flashlight && p.alive && !dayCamp && !this.cine ? 65 * fl : 0;
+    const lit = p.flashlight && p.alive && !dayCamp && !this.cine;
+    if (lit && this.state === 'playing') p.drainBattery(dt);
+    // a weak battery dims the beam and makes it stutter
+    const charge = this.run.player.battery ?? 1;
+    let weak = charge > 0.25 ? 1 : 0.35 + 2.6 * charge;
+    if (charge < 0.12 && Math.random() < dt * 4) weak *= 0.2;
+    this.flashlight.intensity = lit && p.flashlight ? 65 * fl * weak : 0;
     this.flashlight.castShadow = lvl.kind === 'building';
     this.muzzle.intensity = Math.max(0, this.muzzle.intensity - dt * 160);
     this.lightT = (this.lightT || 0) - dt;

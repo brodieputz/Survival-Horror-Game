@@ -18,6 +18,7 @@ import {
   mouthsToFeed,
   appraisal,
   TAG_NAMES,
+  DOG_BITE,
 } from './run.js';
 import { CITIES, CITY, US_OUTLINE, LAKES, MAP_ASPECT, project, SIZE_NAMES, citySize } from './cities.js';
 
@@ -71,7 +72,7 @@ export class UI {
       'hud', 'dayLine', 'phaseLine', 'locLine', 'res', 'barBox', 'barFill', 'barText', 'waveText', 'squad', 'miniHint', 'lvlText', 'xpText',
       'xpFill', 'hpFill', 'hpText', 'stFill', 'status', 'trapHud', 'inv', 'wname', 'ammo', 'ammoSub', 'cross', 'prompt', 'msgs', 'banner',
       'bannerT', 'bannerS', 'hurt', 'hideMask', 'fade', 'title', 'pause', 'panel', 'panelTitle', 'panelSub', 'panelBody', 'mapScreen',
-      'bigmap', 'death', 'deathCause', 'deathSub', 'gameover', 'goStats', 'minimap', 'bestLine', 'vignette', 'mapLegend', 'continueBtn',
+      'bigmap', 'death', 'deathCause', 'deathSub', 'gameover', 'goStats', 'minimap', 'bestLine', 'vignette', 'mapLegend', 'continueBtn', 'battery',
     ])
       this.el[id] = $(id);
     this.mini = this.el.minimap.getContext('2d');
@@ -217,6 +218,10 @@ export class UI {
     if (p.hidden) status.push('HIDDEN');
     else if (p.crouch) status.push('CROUCHED');
     if (!p.flashlight) status.push('LIGHT OFF');
+    // the flashlight's battery: five cells and the spares
+    const ch = run.player.battery ?? 1;
+    const cells = Math.ceil(ch * 5);
+    this.set('batt', this.el.battery, `<span class="${ch < 0.2 ? 'bad' : ''}">🔋 ${'▮'.repeat(cells)}<span class="muted">${'▯'.repeat(5 - cells)}</span></span> ×${run.batteries}`, 'innerHTML');
     if (p.trapped > 0) status.push('TRAPPED');
     this.set('status', this.el.status, status.join(' · '));
 
@@ -411,6 +416,7 @@ export class UI {
       sleep: () => this.panelSleep(),
       wait: () => this.panelWait(),
       report: () => this.panelReport(),
+      note: () => this.panelNote(),
     }[P.kind]();
     this.el.panelTitle.textContent = r.title;
     this.el.panelSub.innerHTML = r.sub || '';
@@ -423,7 +429,7 @@ export class UI {
 
   resLine() {
     const run = this.game.run;
-    return `<span class="r-scrap">⚙ ${run.scrap} scrap</span> · <span class="r-food">◍ ${run.food} food (${mouthsToFeed(run)}/day)</span> · <span class="r-coal">◼ ${run.coal} coal</span> · <span class="r-med">✚ ${run.medkits} med kits</span>`;
+    return `<span class="r-scrap">⚙ ${run.scrap} scrap</span> · <span class="r-food">◍ ${run.food} food (${mouthsToFeed(run)}/day)</span> · <span class="r-coal">◼ ${run.coal} coal</span> · <span class="r-med">✚ ${run.medkits} med kits</span> · <span class="r-bat">🔋 ${run.batteries}</span>${run.keys.length ? ` · <span class="gold">🔑 ${run.keys.length}</span>` : ''}`;
   }
 
   holderLabel(uid) {
@@ -469,7 +475,7 @@ export class UI {
       if (s.pierce) mid += `<div class="stat-row"><span>Pierces</span>${bar(s.pierce, 6)}<span>${s.pierce}</span></div>`;
       mid += `</div><div>Held by: <b class="gold">${esc(this.holderLabel(inst.uid))}</b></div>`;
       mid += `<div style="margin:6px 0"><button class="pbtn" data-act="equip" data-slot="0">Equip as primary</button><button class="pbtn" data-act="equip" data-slot="1">Equip as secondary</button><button class="pbtn" data-act="rack">Put on the rack</button></div>`;
-      const camp = run.survivors.filter((v) => v.status === 'camp' && v.hp > 0);
+      const camp = run.survivors.filter((v) => v.status === 'camp' && v.hp > 0 && !v.dog);
       if (camp.length) {
         mid += `<div>Give to: `;
         for (const v of camp) mid += `<button class="pbtn" data-act="give" data-id="${v.id}" ${v.weapon === inst.uid ? 'disabled' : ''}>${esc(v.name.split(' ')[0])}</button>`;
@@ -496,7 +502,7 @@ export class UI {
     right += `<h3 style="margin-top:10px">Survivors</h3>`;
     const alive = run.survivors.filter((v) => v.status !== 'dead');
     if (!alive.length) right += `<div class="muted">No one yet. Search the area for survivors.</div>`;
-    for (const v of alive) right += `<div>${esc(v.name)} <small class="muted">L${v.level}${v.status === 'away' ? ' · out' : ''}</small><br>&nbsp;&nbsp;${nm(v.weapon)}</div>`;
+    for (const v of alive) right += `<div>${esc(v.name)} <small class="muted">${v.dog ? 'dog · ' : ''}L${v.level}${v.status === 'away' ? ' · out' : ''}</small><br>&nbsp;&nbsp;${v.dog ? '<span class="muted">teeth</span>' : nm(v.weapon)}</div>`;
     right += `</div>`;
     return { title: 'WEAPON RACK', sub: this.resLine(), body: `<div class="cols"><div>${left}</div><div>${mid}</div><div>${right}</div></div>` };
   }
@@ -511,11 +517,15 @@ export class UI {
     let body = `<div class="cols2"><div class="box"><h3>${esc(s.name)} — level ${s.level}</h3>`;
     body += `<div class="stat-row"><span>Health</span>${bar(s.hp, max)}<span>${Math.ceil(s.hp)}/${max}</span></div>`;
     body += `<div class="stat-row"><span>Experience</span>${bar(s.xp, xpToNext(s.level))}<span>${s.xp}/${xpToNext(s.level)}</span></div>`;
-    body += `<div class="stat-row"><span>Aim</span>${bar(survivorAim(s), 1)}<span>${Math.round(survivorAim(s) * 100)}%</span></div>`;
+    if (!s.dog) body += `<div class="stat-row"><span>Aim</span>${bar(survivorAim(s), 1)}<span>${Math.round(survivorAim(s) * 100)}%</span></div>`;
     body += `<div class="stat-row"><span>Speed</span>${bar(survivorSpeed(s), 6)}<span>${survivorSpeed(s).toFixed(1)}</span></div>`;
     body += `<div class="stat-row"><span>Stamina</span>${bar(survivorStamina(s), 200)}<span>${survivorStamina(s)}</span></div>`;
     body += `<div style="margin-top:6px">Kills: ${s.kills || 0}</div>`;
     body += `<div style="margin-top:8px"><button class="pbtn big" data-act="heal" ${run.medkits <= 0 || s.hp >= max ? 'disabled' : ''}>Use a med kit (+60%) · ${run.medkits} left</button></div></div>`;
+    if (s.dog) {
+      body += `<div class="box"><h3>${esc(s.look.breed)}</h3><div class="muted">Dogs can't carry weapons and won't go scavenging on their own, but they're fast, bite hard (${DOG_BITE(s)} a bite) and bark when the dead come close. They eat like everyone else.</div></div></div>`;
+      return { title: s.name.toUpperCase(), sub: 'Dog', body };
+    }
     body += `<div class="box"><h3>Weapon</h3><div style="font-size:24px">${w ? rname(WEAPONS[w.id]) : '<span class="muted">Fists</span>'}</div>`;
     if (w) body += `<button class="pbtn" data-act="stake">Take it back</button>`;
     body += `<div class="muted" style="margin-top:8px">Survivors never run out of ammo. With launchers, grenades, molotovs and flamethrowers they're slow and careful, and won't fire where the blast would catch a friend. If they die, their weapon is lost.</div>`;
@@ -592,6 +602,12 @@ export class UI {
     };
   }
 
+  panelNote() {
+    const n = this.panel.arg || {};
+    const body = `<div class="note-paper">${esc(n.text || '')}</div>${n.hint ? '<div class="gold" style="text-align:center;margin-top:10px">Marked on your map.</div>' : ''}`;
+    return { title: 'A NOTE', sub: n.where ? esc(n.where) : '', body, close: 'PUT IT DOWN [E]' };
+  }
+
   panelReport() {
     const lines = this.panel.arg || [];
     let body = `<div class="box report" style="max-width:820px;margin:auto">`;
@@ -613,7 +629,11 @@ export class UI {
     for (const l of locs) {
       const L = LOCATION_TYPES[l.type];
       const cls = ['loc', P.sel === l.id ? 'sel' : '', l.searched ? 'done' : '', l.claimed ? 'claim' : ''].join(' ');
-      markers += `<button class="${cls}" style="left:${(l.x * 100).toFixed(1)}%;top:${(l.y * 100).toFixed(1)}%" data-act="loc" data-id="${l.id}" title="${esc(l.name)}">${L.icon}<span class="lbl">${esc(l.name)}</span></button>`;
+      // a lock you've found (or heard about), a key you know the whereabouts of
+      let badge = '';
+      if (l.lock && !l.lock.opened && (l.lock.seen || l.lock.hint)) badge += `<span class="badge ${run.keys.includes(l.lock.id) ? 'have' : ''}" title="locked ${esc(l.lock.vault)}">🔒</span>`;
+      if (l.key && l.keyHint && !run.keys.includes(l.key.opens)) badge += `<span class="badge key" title="a key is here">🔑</span>`;
+      markers += `<button class="${cls}" style="left:${(l.x * 100).toFixed(1)}%;top:${(l.y * 100).toFixed(1)}%" data-act="loc" data-id="${l.id}" title="${esc(l.name)}">${L.icon}${badge}<span class="lbl">${esc(l.name)}</span></button>`;
     }
     const left = `<div class="mapwrap"><canvas id="localMapCanvas" width="640" height="480"></canvas>${markers}</div>`;
     const loc = locs.find((l) => l.id === P.sel);
@@ -625,6 +645,15 @@ export class UI {
       right += `<div>Danger: <span class="skulls">${skulls(loc.difficulty)}</span><span class="muted">${skulls(6 - loc.difficulty).replace(/☠/g, '·')}</span></div>`;
       right += `<div>Search time: <b class="gold">${loc.hours} hours</b></div>`;
       right += `<div class="muted" style="font-size:17px">Often holds: ${this.lootHint(L)}</div>`;
+      if (loc.floors > 1) right += `<div class="muted" style="font-size:17px">${loc.floors} floors</div>`;
+      const lk = loc.lock;
+      if (lk && !lk.opened && (lk.seen || lk.hint)) {
+        const keyLoc = run.locality.locations.find((x) => x.id === lk.keyAt);
+        const have = run.keys.includes(lk.id);
+        right += `<div class="${have ? 'good' : 'gold'}" style="margin-top:4px">🔒 A locked ${esc(lk.vault)}. ${have ? 'You have the key.' : lk.hint && keyLoc ? `The key is at ${esc(keyLoc.name)}.` : 'Somewhere in town there is a key.'}</div>`;
+      }
+      if (loc.key && loc.keyHint && !run.keys.includes(loc.key.opens)) right += `<div class="gold" style="margin-top:4px">🔑 A note says a key is here.</div>`;
+      if (loc.visited && !loc.searched && lk && !lk.opened) right += `<div class="muted">You've been through it once; the rest was picked over.</div>`;
       if (loc.searched) right += `<div class="muted" style="margin-top:8px">Already searched.</div>`;
       else if (loc.claimed) right += `<div class="good" style="margin-top:8px">A survivor is searching it now.</div>`;
       else if (run.phase !== 'day') right += `<div class="bad" style="margin-top:8px">It's getting dark. Nobody leaves camp now.</div>`;
@@ -634,9 +663,10 @@ export class UI {
         if (run.hours < loc.hours) right += `<div class="bad">Not enough daylight left.</div>`;
         if (camp.length) {
           right += `<div style="margin-top:6px">Bring along: `;
-          for (const v of camp) right += `<span class="chip ${P.comps.has(v.id) ? 'on' : ''}" data-act="comp" data-id="${v.id}">${esc(v.name.split(' ')[0])} L${v.level}</span>`;
+          for (const v of camp) right += `<span class="chip ${P.comps.has(v.id) ? 'on' : ''}" data-act="comp" data-id="${v.id}">${v.dog ? '🐕 ' : ''}${esc(v.name.split(' ')[0])} L${v.level}</span>`;
           right += `</div><div style="margin-top:8px">Send alone (back at dusk):</div>`;
           for (const v of camp) {
+            if (v.dog) continue;
             const pc = Math.round(expeditionChance(run, v, loc) * 100);
             const w = v.weapon != null ? weaponByUid(run, v.weapon) : null;
             right += `<div><button class="pbtn" data-act="send" data-id="${v.id}">Send ${esc(v.name.split(' ')[0])}</button> <span class="${pc >= 70 ? 'good' : pc >= 45 ? 'gold' : 'bad'}">${pc}% survival</span> <small class="muted">L${v.level} · ${w ? esc(WEAPONS[w.id].name) : 'unarmed'}</small></div>`;

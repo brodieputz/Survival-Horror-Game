@@ -605,6 +605,264 @@ const builders = {
     speckle(ctx, 32, 32, rng, 0.3);
     return toTex(c, { repeat: false });
   },
+  // ---------------------------------------------------------------- lived-in interiors
+  // painted plaster: the colour comes from the seed; a skirting board,
+  // scuffs, damp and old picture outlines
+  plaster(seed = 100) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    const base = [
+      [176, 164, 140],
+      [150, 166, 160],
+      [168, 150, 136],
+      [140, 150, 170],
+      [186, 178, 150],
+      [130, 140, 116],
+      [176, 140, 130],
+      [158, 158, 152],
+    ][seed % 8];
+    ctx.fillStyle = shade(base, 0.9);
+    ctx.fillRect(0, 0, 64, 64);
+    speckle(ctx, 64, 64, rng, 0.18, 0.5);
+    if (seed % 3 === 0) {
+      // wainscoting below a chair rail
+      ctx.fillStyle = shade(base, 0.62);
+      ctx.fillRect(0, 40, 64, 24);
+      ctx.fillStyle = shade(base, 0.5);
+      for (let x = 0; x < 64; x += 16) ctx.fillRect(x, 40, 1, 24);
+      ctx.fillStyle = shade(base, 1.1);
+      ctx.fillRect(0, 39, 64, 2);
+    }
+    ctx.fillStyle = '#3a2a1c';
+    ctx.fillRect(0, 59, 64, 5);
+    ctx.fillStyle = '#5a4430';
+    ctx.fillRect(0, 59, 64, 1);
+    grime(ctx, 64, 64, rng, 10, '#2a1e14');
+    if (rng.chance(0.5)) drips(ctx, 64, 64, rng, 1);
+    return toTex(c);
+  },
+  kitchenFloor(seed = 101) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    for (let y = 0; y < 4; y++)
+      for (let x = 0; x < 4; x++) {
+        ctx.fillStyle = (x + y) % 2 ? '#d8d2c0' : seed % 2 ? '#2a2c2a' : '#7a3a2a';
+        ctx.fillRect(x * 16, y * 16, 16, 16);
+      }
+    speckle(ctx, 64, 64, rng, 0.25, 0.4);
+    grime(ctx, 64, 64, rng, 20, '#2a2014');
+    grime(ctx, 64, 64, rng, 2, '#3a0606');
+    return toTex(c);
+  },
+  bathTile(seed = 102) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    const tint = [
+      [214, 214, 206],
+      [180, 206, 196],
+      [190, 200, 220],
+    ][seed % 3];
+    ctx.fillStyle = '#6a6a64';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let y = 0; y < 8; y++)
+      for (let x = 0; x < 8; x++) {
+        const f = rng.range(0.92, 1.04);
+        ctx.fillStyle = shade(tint, f);
+        ctx.fillRect(x * 8 + 1, y * 8 + 1, 7, 7);
+      }
+    // a darker band of tiles at waist height
+    ctx.fillStyle = 'rgba(30,40,40,0.35)';
+    ctx.fillRect(0, 32, 64, 8);
+    grime(ctx, 64, 64, rng, 18, '#3a3224');
+    if (rng.chance(0.7)) drips(ctx, 64, 64, rng, rng.int(1, 3));
+    return toTex(c);
+  },
+  terrazzo(seed = 103) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#a8a49a';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 260; i++) {
+      ctx.fillStyle = rng.pick(['#e0dcd0', '#6a665e', '#8a7a68', '#c8c0b0', '#4a4844']);
+      ctx.fillRect(rng.int(0, 63), rng.int(0, 63), rng.int(1, 2), rng.int(1, 2));
+    }
+    ctx.fillStyle = 'rgba(60,56,50,0.5)';
+    ctx.fillRect(0, 0, 64, 1);
+    ctx.fillRect(0, 0, 1, 64);
+    grime(ctx, 64, 64, rng, 14, '#2a2620');
+    return toTex(c);
+  },
+  rugPattern(seed = 104) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    const pal = [
+      ['#6a1e1a', '#c8a060', '#1e2a3a'],
+      ['#1e3a4a', '#d8c8a0', '#6a2a1a'],
+      ['#4a3a20', '#a87a40', '#2a1a10'],
+      ['#3a4a2a', '#c8b890', '#5a2020'],
+    ][seed % 4];
+    ctx.fillStyle = pal[0];
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = pal[1];
+    ctx.lineWidth = 5;
+    ctx.strokeRect(8, 8, 112, 112);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(18, 18, 92, 92);
+    ctx.fillStyle = pal[2];
+    ctx.beginPath();
+    ctx.moveTo(64, 30);
+    ctx.lineTo(98, 64);
+    ctx.lineTo(64, 98);
+    ctx.lineTo(30, 64);
+    ctx.fill();
+    ctx.fillStyle = pal[1];
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(64, 64, 6 + i * 6, 0, Math.PI * 2);
+      ctx.globalAlpha = 0.25;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    speckle(ctx, 128, 128, rng, 0.35, 0.5);
+    grime(ctx, 128, 128, rng, 10, '#1a100a');
+    return toTex(c, { repeat: false });
+  },
+  painting(seed = 105) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 48);
+    const ctx = c.getContext('2d');
+    const kind = seed % 4;
+    if (kind === 0) {
+      // a landscape
+      const g = ctx.createLinearGradient(0, 0, 0, 48);
+      g.addColorStop(0, '#7a9ab0');
+      g.addColorStop(0.6, '#d8c8a0');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 64, 48);
+      ctx.fillStyle = '#4a5a3a';
+      ctx.beginPath();
+      ctx.moveTo(0, 34);
+      for (let x = 0; x <= 64; x += 8) ctx.lineTo(x, 26 + rng.range(-6, 6));
+      ctx.lineTo(64, 48);
+      ctx.lineTo(0, 48);
+      ctx.fill();
+    } else if (kind === 1) {
+      // a portrait
+      ctx.fillStyle = '#2a2018';
+      ctx.fillRect(0, 0, 64, 48);
+      ctx.fillStyle = '#c89a78';
+      ctx.beginPath();
+      ctx.ellipse(32, 20, 9, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3a2a40';
+      ctx.fillRect(18, 32, 28, 16);
+    } else if (kind === 2) {
+      // a family photo
+      ctx.fillStyle = '#c8c0a8';
+      ctx.fillRect(0, 0, 64, 48);
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = rng.pick(['#e0b090', '#a07050', '#704a30']);
+        ctx.beginPath();
+        ctx.arc(12 + i * 13, 20 + rng.range(-3, 3), 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = rng.pick(['#3a5a8a', '#8a3a3a', '#4a6a3a', '#5a4a6a']);
+        ctx.fillRect(7 + i * 13, 26, 10, 16);
+      }
+    } else {
+      // abstract office art
+      ctx.fillStyle = '#e0dcd0';
+      ctx.fillRect(0, 0, 64, 48);
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = rng.pick(['#c03a2a', '#2a4a8a', '#e0b030', '#1a1a1a']);
+        ctx.fillRect(rng.int(0, 50), rng.int(0, 36), rng.int(8, 24), rng.int(6, 16));
+      }
+    }
+    grime(ctx, 64, 48, rng, 6, '#2a1a10');
+    return toTex(c, { repeat: false });
+  },
+  books(seed = 106) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 16);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#1a120c';
+    ctx.fillRect(0, 0, 64, 16);
+    for (let x = 0; x < 64; ) {
+      const w = rng.int(2, 5);
+      if (rng.chance(0.12)) {
+        x += w + 2;
+        continue;
+      }
+      ctx.fillStyle = rng.pick(['#6a1e1a', '#1e3a5a', '#2a4a2a', '#8a6a3a', '#3a2a4a', '#c8b890', '#2a2a2a', '#8a3a1a']);
+      const h = rng.int(10, 16);
+      ctx.fillRect(x, 16 - h, w, h);
+      ctx.fillStyle = 'rgba(255,230,180,0.25)';
+      ctx.fillRect(x, 16 - h + 3, w, 1);
+      x += w;
+    }
+    return toTex(c, { detail: false });
+  },
+  cubicle(seed = 107) {
+    const rng = new RNG(seed);
+    const c = canvas(32, 32);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = ['#5a6070', '#6a6458', '#4e5a5a'][seed % 3];
+    ctx.fillRect(0, 0, 32, 32);
+    speckle(ctx, 32, 32, rng, 0.5, 0.5);
+    grime(ctx, 32, 32, rng, 5, '#1a1a1a');
+    return toTex(c);
+  },
+  poster(seed = 108) {
+    const rng = new RNG(seed);
+    const c = canvas(48, 64);
+    const ctx = c.getContext('2d');
+    const kind = seed % 3;
+    ctx.fillStyle = kind === 0 ? '#e8e0c8' : kind === 1 ? '#f0f0e8' : '#2a3a5a';
+    ctx.fillRect(0, 0, 48, 64);
+    ctx.fillStyle = kind === 2 ? '#e8e0c8' : '#1a1a1a';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(kind === 0 ? 'MISSING' : kind === 1 ? 'EVACUATE' : 'STAY CALM', 24, 11);
+    if (kind === 0) {
+      ctx.fillStyle = '#8a7a68';
+      ctx.fillRect(12, 16, 24, 26);
+      ctx.fillStyle = '#c89a78';
+      ctx.beginPath();
+      ctx.arc(24, 26, 6, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = kind === 1 ? '#b81a12' : '#e8c040';
+      ctx.fillRect(8, 18, 32, 4);
+      ctx.fillRect(8, 26, 26, 2);
+    }
+    ctx.fillStyle = kind === 2 ? 'rgba(232,224,200,0.6)' : 'rgba(26,26,26,0.6)';
+    for (let y = 46; y < 60; y += 3) ctx.fillRect(8, y, rng.int(18, 32), 1);
+    grime(ctx, 48, 64, rng, 8, '#3a2a14');
+    return toTex(c, { repeat: false });
+  },
+  // daylight through dusty slatted blinds (painted bright: the glow is in
+  // the material colour)
+  blinds(seed = 109) {
+    const rng = new RNG(seed);
+    const c = canvas(32, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 32, 64);
+    for (let y = 0; y < 64; y += 4) {
+      ctx.fillStyle = `rgba(40,36,30,${rng.range(0.55, 0.8)})`;
+      ctx.fillRect(0, y, 32, 2);
+    }
+    if (seed % 2) {
+      // a few slats bent or missing
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(rng.int(4, 20), rng.int(10, 50), 8, 6);
+    }
+    return toTex(c, { repeat: false });
+  },
   // ---------------------------------------------------------------- buildings
   tile(seed = 20) {
     const rng = new RNG(seed);

@@ -683,7 +683,7 @@ export class CampScene {
       const a = (i / Math.max(1, 8)) * Math.PI * 2 + 0.4;
       const hx = 26 + Math.cos(a) * 3.6;
       const hz = 22 + Math.sin(a) * 3.6;
-      const bed = P.makeBedroll(rec.look.shirt);
+      const bed = P.makeBedroll(rec.dog ? 0x5a4a3a : rec.look.shirt); // a dog gets an old blanket
       bed.position.set(26 + Math.cos(a) * 5.2, 0.01, 22 + Math.sin(a) * 5.2);
       bed.rotation.y = -a + Math.PI / 2;
       this.group.add(bed);

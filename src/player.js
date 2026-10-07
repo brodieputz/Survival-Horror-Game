@@ -1,7 +1,7 @@
 // First-person player: movement, stamina, hiding, weapons and med kits.
 // Health, level and inventory live in the run state so they persist.
 import * as THREE from 'three';
-import { PLAYER, NOISE, TILE, WALL_H, PIT_DEPTH, T } from './config.js';
+import { PLAYER, NOISE, TILE, WALL_H, PIT_DEPTH, T, BATTERY_LIFE } from './config.js';
 import { clamp, damp, angleDiff } from './util.js';
 import { WEAPONS, weaponStats, AMMO } from './weapons.js';
 import { weaponByUid, playerMaxHp, playerMaxStamina, playerSpeedMul } from './run.js';
@@ -523,8 +523,43 @@ export class Player {
 
   // ------------------------------------------------------------ actions
   toggleFlashlight() {
+    if (!this.flashlight && this.run.player.battery <= 0 && !this.swapBattery()) {
+      this.game.audio.click(0.3);
+      return this.game.ui.message('The flashlight is dead. You need batteries.', 'dim');
+    }
     this.flashlight = !this.flashlight;
     this.game.audio.flashlight();
+  }
+
+  // Put a fresh battery in from the spares. Returns true if there was one.
+  swapBattery() {
+    const run = this.run;
+    if (run.batteries <= 0) return false;
+    run.batteries--;
+    run.player.battery = 1;
+    this.game.audio.reload();
+    this.game.ui.message(`Fresh battery in the flashlight. ${run.batteries} spare.`, 'dim');
+    return true;
+  }
+
+  // The flashlight drains its battery while it's on (about four minutes a
+  // battery). When it runs flat a spare goes in, if there is one.
+  drainBattery(dt) {
+    const run = this.run;
+    if (run.player.battery == null) run.player.battery = 1;
+    if (!this.flashlight) return;
+    run.player.battery = Math.max(0, run.player.battery - dt / BATTERY_LIFE);
+    if (run.player.battery <= 0) {
+      if (!this.swapBattery()) {
+        this.flashlight = false;
+        this.game.audio.flashlight();
+        this.game.ui.message('The flashlight sputters and dies. No batteries left.', 'bad', 4);
+      }
+    } else if (run.player.battery < 0.15 && !this.lowWarned) {
+      this.lowWarned = true;
+      this.game.ui.message(run.batteries ? 'The flashlight is dimming.' : 'The flashlight is dimming, and you have no spare batteries.', 'dim', 3);
+    }
+    if (run.player.battery > 0.2) this.lowWarned = false;
   }
 
   useMedkit() {

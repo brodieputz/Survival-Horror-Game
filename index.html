@@ -79,6 +79,7 @@
   .bar .label { position: absolute; left: 8px; top: -2px; font-size: 21px; color: #fff; }
   #hpText { position: absolute; right: 8px; top: -2px; font-size: 21px; }
   .bar.st { height: 12px; }
+  #battery { font-size: 18px; color: var(--bone-dim); letter-spacing: 1px; }
   #status { font-size: 20px; color: var(--bone-dim); margin-top: 5px; height: 20px; letter-spacing: 2px; }
 
   #inv { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 8px; }
@@ -234,6 +235,9 @@
   .mapwrap { position: relative; width: min(100%, 82vh); aspect-ratio: 4 / 3; border: 3px solid #4a3220; background: #c8b48a; overflow: hidden; }
   .mapwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .loc { pointer-events: auto; position: absolute; transform: translate(-50%, -50%); font-size: 22px; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #3a2410; background: #e8d8b0; color: #3a2410; cursor: pointer; font-family: var(--mono); display: flex; align-items: center; justify-content: center; }
+  .loc .badge { position: absolute; top: -10px; right: -12px; font-size: 14px; filter: drop-shadow(0 0 2px #000); }
+  .loc .badge.key { right: auto; left: -12px; }
+  .loc .badge.have { filter: drop-shadow(0 0 4px #6fd05a); }
   .loc.sel { border-color: #b3150f; box-shadow: 0 0 0 3px rgba(179,21,15,0.5); }
   .loc.done { opacity: 0.45; background: #a89878; }
   .loc.claim { background: #d0e0b0; }
@@ -246,6 +250,7 @@
   .loc.city.s3 { width: 34px; height: 34px; font-size: 18px; }
   .loc.city .lbl { top: auto; bottom: 100%; margin-bottom: 2px; font-size: 14px; }
   .camp-dot.here { font-size: 22px; text-shadow: 0 0 6px #f0e2b8; }
+  .note-paper { max-width: 560px; margin: 20px auto; padding: 34px 38px; background: linear-gradient(170deg, #e8dcc0, #cbb98e); color: #2a1a10; font: italic 24px/1.4 'Georgia', serif; box-shadow: 0 10px 40px rgba(0,0,0,0.7); transform: rotate(-1.2deg); white-space: pre-wrap; }
   .ropts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px; }
   .ropts .appraisal { cursor: pointer; }
   .ropts .appraisal:hover { outline: 1px solid #b3150f; }
@@ -290,6 +295,7 @@
     <div class="bar"><div class="fill" id="hpFill"></div><span class="label">HEALTH</span><span id="hpText">100 / 100</span></div>
     <div class="bar st"><div class="fill" id="stFill"></div></div>
     <div id="status"></div>
+    <div id="battery"></div>
   </div>
   <div id="trapHud"></div>
   <div id="inv"></div>

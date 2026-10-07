@@ -208,3 +208,63 @@ export function makeHuman(look) {
   m.gunMount = pivot(right.fore, 0, -0.3, 0.03);
   return m;
 }
+
+// A dog: a quadruped rig with the same kind of joints (legs with knees, a
+// head with a jaw) plus a tail. look: coat, coat2 (muzzle, chest, socks),
+// size (1 = a German shepherd, ~0.62 m at the shoulder).
+export function makeDog(look) {
+  const k = look.size ?? 1;
+  const coat = L({ color: look.coat, map: tex('fabric', 42), roughness: 0.95 });
+  const coat2 = L({ color: look.coat2, map: tex('fabric', 42), roughness: 0.95 });
+  const dark = L({ color: 0x0e0c0a, roughness: 0.5 });
+  const root = new THREE.Group();
+  const shoulder = 0.5 * k;
+  const body = pivot(root, 0, shoulder, 0);
+  // barrel of the body runs along z (the dog faces +z)
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.14 * k, 0.42 * k, 4, 10), coat);
+  torso.rotation.x = Math.PI / 2;
+  torso.scale.set(1, 1, 1.12);
+  torso.castShadow = true;
+  body.add(torso);
+  body.add(ball(0.15 * k, coat2, 0, -0.03 * k, 0.24 * k, 0.95, 1.05, 0.9)); // chest
+  body.add(ball(0.13 * k, coat, 0, 0.01, -0.24 * k, 1, 0.95, 1)); // haunches
+  // neck and head
+  const neck = pivot(body, 0, 0.06 * k, 0.3 * k);
+  neck.add(capsule(0.075 * k, 0.16 * k, coat, 0, 0.08 * k, 0.04 * k));
+  neck.children[0].rotation.x = -0.7;
+  const head = pivot(neck, 0, 0.19 * k, 0.1 * k);
+  head.add(ball(0.095 * k, coat, 0, 0, 0, 1, 0.92, 1.1));
+  head.add(block(0.09 * k, 0.07 * k, 0.15 * k, coat2, 0, -0.025 * k, 0.12 * k)); // muzzle
+  head.add(ball(0.022 * k, dark, 0, -0.005 * k, 0.2 * k)); // nose
+  const jaw = pivot(head, 0, -0.055 * k, 0.07 * k);
+  jaw.add(block(0.075 * k, 0.025 * k, 0.12 * k, coat2, 0, 0, 0.05 * k));
+  const eye = B({ color: 0x1a1008 });
+  for (const s of [-1, 1]) {
+    head.add(ball(0.014 * k, eye, s * 0.045 * k, 0.025 * k, 0.075 * k));
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.035 * k, 0.09 * k, 4), coat);
+    ear.position.set(s * 0.055 * k, 0.09 * k, -0.01 * k);
+    ear.rotation.z = -s * 0.25;
+    ear.castShadow = true;
+    head.add(ear);
+  }
+  // tail
+  const tail = pivot(body, 0, 0.06 * k, -0.36 * k);
+  const tl = capsule(0.03 * k, 0.26 * k, coat, 0, 0.1 * k, -0.08 * k);
+  tl.rotation.x = -0.6;
+  tail.add(tl);
+  // legs: front at +z, back at -z
+  const legs = [];
+  for (const [fz, front] of [
+    [0.24, true],
+    [-0.26, false],
+  ])
+    for (const s of [-1, 1]) {
+      const hip = pivot(body, s * 0.085 * k, -0.04 * k, fz * k);
+      hip.add(capsule(0.045 * k, 0.16 * k, front ? coat2 : coat, 0, -0.12 * k, 0));
+      const knee = pivot(hip, 0, -0.24 * k, 0);
+      knee.add(capsule(0.032 * k, 0.17 * k, coat2, 0, -0.1 * k, 0));
+      knee.add(block(0.06 * k, 0.03 * k, 0.08 * k, coat2, 0, -0.215 * k, 0.02 * k)); // paw
+      legs.push({ hip, knee, s, front });
+    }
+  return { root, body, neck, head, jaw, tail, legs, shoulder, height: shoulder + 0.25 * k, dog: true };
+}
