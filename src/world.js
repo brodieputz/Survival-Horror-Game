@@ -113,6 +113,9 @@ export class World {
     this.edgeE = d.edgeE || null;
     this.edgeS = d.edgeS || null;
     this.outdoor = !!opts.outdoor;
+    // smart: path-finding steers around furniture (inside buildings)
+    this.smart = !!opts.smart;
+    this.nav = null; // fine navigation grid, built on first use
     this.group = new THREE.Group();
     this.props = new Map(); // tile index -> array of AABB colliders
     this.materials = {};
@@ -314,6 +317,7 @@ export class World {
         if (!this.props.has(k)) this.props.set(k, []);
         this.props.get(k).push(box);
       }
+    this.nav = null;
     return box;
   }
   removeCollider(box) {
@@ -321,6 +325,174 @@ export class World {
       const i = arr.indexOf(box);
       if (i >= 0) arr.splice(i, 1);
     }
+    this.nav = null;
+  }
+
+  // ---------- Fine navigation grid (buildings) ----------
+  // Half-metre cells (as the generator lays rooms out). A cell is solid if it's rock, a pit or the
+  // stairwell, or if any collider (grown by a body's radius) covers its
+  // centre; crossing between cells respects thin walls and doorway jambs.
+  buildNav() {
+    const K = 6;
+    const C = TILE / K;
+    const GW = this.W * K;
+    const GH = this.H * K;
+    const occ = new Uint8Array(GW * GH);
+    const skip = this.d.skipFloor;
+    const st = this.d.stairs;
+    const R = 0.3;
+    for (let cy = 0; cy < GH; cy++)
+      for (let cx = 0; cx < GW; cx++) {
+        const tx = (cx / K) | 0;
+        const ty = (cy / K) | 0;
+        const t = this.t(tx, ty);
+        const ti = ty * this.W + tx;
+        if (t === T.ROCK || t === T.PIT || (skip && skip.has(ti) && !(st && st.landing.x === tx && st.landing.y === ty))) {
+          occ[cy * GW + cx] = 1;
+          continue;
+        }
+        const px = (cx + 0.5) * C;
+        const pz = (cy + 0.5) * C;
+        const list = this.props.get(ti);
+        if (list)
+          for (const b of list)
+            if (px > b.minX - R && px < b.maxX + R && pz > b.minZ - R && pz < b.maxZ + R) {
+              occ[cy * GW + cx] = 1;
+              break;
+            }
+        // colliders from the neighbouring tiles reach in too
+        if (!occ[cy * GW + cx] && (cx % K === 0 || cx % K === K - 1 || cy % K === 0 || cy % K === K - 1))
+          for (let oy = -1; oy <= 1 && !occ[cy * GW + cx]; oy++)
+            for (let ox = -1; ox <= 1; ox++) {
+              if (!ox && !oy) continue;
+              const l2 = this.props.get((ty + oy) * this.W + tx + ox);
+              if (l2 && l2.some((b) => px > b.minX - R && px < b.maxX + R && pz > b.minZ - R && pz < b.maxZ + R)) {
+                occ[cy * GW + cx] = 1;
+                break;
+              }
+            }
+      }
+    const half = DOOR_W / 2 - 0.3;
+    // can you step from cell c across to its neighbour (dx, dy)?
+    const cross = (cx, cy, dx, dy) => {
+      const tx = (cx / K) | 0;
+      const ty = (cy / K) | 0;
+      const ux = ((cx + dx) / K) | 0;
+      const uy = ((cy + dy) / K) | 0;
+      if (tx === ux && ty === uy) return true;
+      const e = this.edge(tx, ty, ux - tx, uy - ty);
+      if (e === EDGE.NONE) return true;
+      if (e !== EDGE.DOOR) return false;
+      const along = ux !== tx ? (cy + 0.5) * C - (ty + 0.5) * TILE : (cx + 0.5) * C - (tx + 0.5) * TILE;
+      return Math.abs(along) < half;
+    };
+    const passE = new Uint8Array(GW * GH);
+    const passS = new Uint8Array(GW * GH);
+    for (let cy = 0; cy < GH; cy++)
+      for (let cx = 0; cx < GW; cx++) {
+        if (cx + 1 < GW && cross(cx, cy, 1, 0)) passE[cy * GW + cx] = 1;
+        if (cy + 1 < GH && cross(cx, cy, 0, 1)) passS[cy * GW + cx] = 1;
+      }
+    this.nav = { K, C, GW, GH, occ, passE, passS };
+    return this.nav;
+  }
+
+  navFree(cx, cy) {
+    const n = this.nav;
+    return cx >= 0 && cy >= 0 && cx < n.GW && cy < n.GH && !n.occ[cy * n.GW + cx];
+  }
+  navStep(cx, cy, dx, dy) {
+    const n = this.nav;
+    const GW = n.GW;
+    const o = (x, y, ddx, ddy) => (ddx > 0 ? n.passE[y * GW + x] : ddx < 0 ? n.passE[y * GW + x - 1] : ddy > 0 ? n.passS[y * GW + x] : n.passS[(y - 1) * GW + x]);
+    if (!dx || !dy) return !!o(cx, cy, dx, dy);
+    return !!(o(cx, cy, dx, 0) && o(cx + dx, cy, 0, dy) && o(cx, cy, 0, dy) && o(cx, cy + dy, dx, 0) && this.navFree(cx + dx, cy) && this.navFree(cx, cy + dy));
+  }
+
+  // A* over the fine grid. Returns world-space waypoints or null.
+  findPathFine(sx, sz, gx, gz, maxNodes = 24000) {
+    const n = this.nav || this.buildNav();
+    const { C, GW } = n;
+    let scx = Math.floor(sx / C);
+    let scy = Math.floor(sz / C);
+    const gcx = Math.floor(gx / C);
+    const gcy = Math.floor(gz / C);
+    if (!this.navFree(scx, scy)) {
+      // step off whatever we're brushing against
+      let best = null;
+      let bd = Infinity;
+      for (let oy = -2; oy <= 2; oy++)
+        for (let ox = -2; ox <= 2; ox++) {
+          if (!this.navFree(scx + ox, scy + oy)) continue;
+          const d = ox * ox + oy * oy;
+          if (d < bd) {
+            bd = d;
+            best = [scx + ox, scy + oy];
+          }
+        }
+      if (!best) return null;
+      [scx, scy] = best;
+    }
+    const start = scy * GW + scx;
+    const goal = gcy * GW + gcx;
+    const g = new Map();
+    const came = new Map();
+    const closed = new Set();
+    const heap = new MinHeap();
+    g.set(start, 0);
+    heap.push(start, 0);
+    let count = 0;
+    let found = false;
+    while (heap.size && count++ < maxNodes) {
+      const cur = heap.pop();
+      if (cur === goal) {
+        found = true;
+        break;
+      }
+      if (closed.has(cur)) continue;
+      closed.add(cur);
+      const cx = cur % GW;
+      const cy = (cur - cx) / GW;
+      const gc = g.get(cur);
+      for (let oy = -1; oy <= 1; oy++)
+        for (let ox = -1; ox <= 1; ox++) {
+          if (!ox && !oy) continue;
+          const nx = cx + ox;
+          const ny = cy + oy;
+          const ni = ny * GW + nx;
+          if (ni !== goal && !this.navFree(nx, ny)) continue;
+          if (nx < 0 || ny < 0 || nx >= GW || ny >= n.GH) continue;
+          if (!this.navStep(cx, cy, ox, oy)) continue;
+          const ng = gc + (ox && oy ? 1.414 : 1);
+          if (ng < (g.get(ni) ?? Infinity)) {
+            g.set(ni, ng);
+            came.set(ni, cur);
+            const hx = Math.abs(nx - gcx);
+            const hy = Math.abs(ny - gcy);
+            heap.push(ni, ng + Math.max(hx, hy) + 0.414 * Math.min(hx, hy));
+          }
+        }
+    }
+    if (!found && goal !== start) return null;
+    const cells = [];
+    let c = goal;
+    while (c !== undefined && c !== start) {
+      cells.push(c);
+      c = came.get(c);
+    }
+    cells.reverse();
+    // keep only the turns
+    const path = [];
+    for (let i = 0; i < cells.length; i++) {
+      const a = cells[i];
+      const prev = i > 0 ? cells[i - 1] : start;
+      const next = cells[i + 1];
+      if (next !== undefined && a - prev === next - a) continue;
+      path.push({ x: ((a % GW) + 0.5) * C, z: (((a / GW) | 0) + 0.5) * C });
+    }
+    if (path.length) path[path.length - 1] = { x: gx, z: gz };
+    else path.push({ x: gx, z: gz });
+    return path;
   }
 
   // Push a circle (pos.x/pos.z, radius r) out of solid geometry.
@@ -435,6 +607,7 @@ export class World {
 
   // ---------- A* path-finding for monsters ----------
   findPath(sx, sz, gx, gz, maxNodes = 4000) {
+    if (this.smart) return this.findPathFine(sx, sz, gx, gz, maxNodes * 6);
     const W = this.W;
     let [stx, sty] = this.tileOf(sx, sz);
     const [gtx, gty] = this.tileOf(gx, gz);
@@ -515,6 +688,20 @@ export class World {
   clearLine(ax, az, bx, bz, r) {
     const len = Math.hypot(bx - ax, bz - az);
     if (this.edgeE && this.rayDist(ax, az, bx, bz, r) < len - 1e-3) return false;
+    if (this.smart) {
+      // and no furniture in the way (the goal itself may be beside some)
+      const n = this.nav || this.buildNav();
+      const steps = Math.ceil(len / 0.3);
+      const gcx = Math.floor(bx / n.C);
+      const gcy = Math.floor(bz / n.C);
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const cx = Math.floor((ax + (bx - ax) * t) / n.C);
+        const cy = Math.floor((az + (bz - az) * t) / n.C);
+        if (Math.abs(cx - gcx) + Math.abs(cy - gcy) <= 1) break;
+        if (!this.navFree(cx, cy)) return false;
+      }
+    }
     const steps = Math.ceil(len / 0.5);
     for (let i = 0; i <= steps; i++) {
       const t = i / Math.max(1, steps);

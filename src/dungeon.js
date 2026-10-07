@@ -988,17 +988,22 @@ function makeFloor(S, f) {
       // several of a kind stand in rows (aisles, racks, desks, tables)
       const anchors = [];
       if (count > 1) {
+        // rows along the room's long axis, standing on the lines between
+        // tiles so there's always a clear lane through the tile centres
         const wide = r.w >= r.h;
-        const longLen = (wide ? r.w : r.h) * TILE;
-        const shortLen = (wide ? r.h : r.w) * TILE;
+        const nLong = wide ? r.w : r.h;
+        const nShort = wide ? r.h : r.w;
         const pw = Math.max(F.w, F.d);
-        const pd = Math.min(F.w, F.d);
-        const nl = Math.max(1, Math.floor((longLen - 1) / (pw + 1.7)));
-        const ns = Math.max(1, Math.floor((shortLen - 1) / (pd + 1.9)));
-        for (let a = 0; a < ns; a++)
-          for (let b2 = 0; b2 < nl; b2++) {
-            const u = ((b2 + 0.5) / nl) * longLen;
-            const v = ((a + 0.5) / ns) * shortLen;
+        const square = F.w > 2.4 && F.d > 2.4;
+        const rows = [];
+        if (square) for (let a = 0; a < nShort; a++) rows.push((a + 0.5) * TILE);
+        else for (let a = 1; a < nShort; a++) rows.push(a * TILE);
+        if (!rows.length) rows.push((nShort * TILE) / 2);
+        const step = square ? 2 : pw > TILE * 0.9 ? 2 : 1;
+        for (const v of rows)
+          for (let b2 = 0; b2 < nLong; b2 += step) {
+            if (b2 === 0 && nLong > 2 && !square) continue; // keep the end aisle open
+            const u = (b2 + 0.5) * TILE;
             anchors.push(wide ? { x: r.x * TILE + u, z: r.y * TILE + v } : { x: r.x * TILE + v, z: r.y * TILE + u });
           }
       } else anchors.push({ x: (r.x + r.w / 2) * TILE, z: (r.y + r.h / 2) * TILE });
@@ -1220,10 +1225,48 @@ function makeFloor(S, f) {
     const c = center(tx, ty);
     if (c.x > b.x0 - 0.3 && c.x < b.x1 + 0.3 && c.z > b.z0 - 0.3 && c.z < b.z1 + 0.3 && tiles[idx(tx, ty)] === T.FLOOR) blocked[idx(tx, ty)] = 1;
   }
-  // never wall off the way through
-  for (let y = fp.y0; y <= fp.y1; y++) for (let x = fp.x0; x <= fp.x1; x++) if (blocked[idx(x, y)] && doorDist[idx(x, y)] >= 0) {
-    const r = rooms[roomOf[idx(x, y)]];
-    if (r.w === 1 || r.h === 1 || r.corridor) blocked[idx(x, y)] = 0;
+  // never wall off the way through: doorways stay open on both sides, and a
+  // room the monsters can't path into gets its tiles back
+  for (const dd of doors) {
+    blocked[idx(dd.x, dd.y)] = 0;
+    blocked[idx(dd.x + dd.dx, dd.y + dd.dy)] = 0;
+  }
+  blocked[idx(entryTile.x, entryTile.y)] = 0;
+  if (st) blocked[idx(st.landing.x, st.landing.y)] = 0;
+  for (let pass = 0; pass < 4; pass++) {
+    const reach = new Uint8Array(W * H);
+    const q = [idx(entryTile.x, entryTile.y)];
+    reach[q[0]] = 1;
+    for (let h = 0; h < q.length; h++) {
+      const c = q[h];
+      const cx = c % W;
+      const cy = (c - cx) / W;
+      for (const [dx, dy] of DIRS4) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        const ni = idx(nx, ny);
+        if (reach[ni] || !inFp(nx, ny) || tiles[ni] !== T.FLOOR || blocked[ni]) continue;
+        const e = getEdge(cx, cy, dx, dy);
+        if (e === EDGE.WALL || e === EDGE.GATE) continue;
+        reach[ni] = 1;
+        q.push(ni);
+      }
+    }
+    let changed = false;
+    for (const r of real) {
+      if (r.vault || r.stairs) continue;
+      // every open tile of the room must be reachable, or the room's
+      // furniture stops counting as walls for the monsters
+      let stranded = false;
+      for (const [x, y] of roomTiles(r)) if (tiles[idx(x, y)] === T.FLOOR && !blocked[idx(x, y)] && !reach[idx(x, y)]) stranded = true;
+      if (stranded)
+        for (const [x, y] of roomTiles(r))
+          if (blocked[idx(x, y)]) {
+            blocked[idx(x, y)] = 0;
+            changed = true;
+          }
+    }
+    if (!changed) break;
   }
 
   // ---------- zombies ----------

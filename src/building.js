@@ -96,7 +96,7 @@ export class BuildingScene {
   buildFloor(i) {
     const game = this.game;
     const d = (this.d = this.plan.floors[i]);
-    this.world = new World(d);
+    this.world = new World(d, { smart: true });
     this.fgroup = new THREE.Group();
     this.hiding = [];
     this.containers = [];
