@@ -6,10 +6,11 @@ import { World } from './world.js';
 import { Enemy } from './enemies.js';
 import { SurvivorActor } from './survivors.js';
 import { RNG, dist2D } from './util.js';
-import { TILE, WALL_H, PIT_DEPTH, T, NOISE, MAX_SURVIVORS } from './config.js';
+import { TILE, PIT_DEPTH, T, NOISE, MAX_SURVIVORS } from './config.js';
 import * as M from './models.js';
-import { makeContainer, makeWallLamp, makeExitMarker, makeDebris, CONTAINER_WIDTH, CONTAINER_DEPTH } from './props.js';
-import { LOCATION_TYPES, describeItem, grantItem } from './run.js';
+import { makeContainer, makeWallLamp, makeDebris, CONTAINER_WIDTH, CONTAINER_DEPTH } from './props.js';
+import { buildExterior } from './exterior.js';
+import { LOCATION_TYPES, describeItem, grantLoot } from './run.js';
 import { WEAPONS, RARITY } from './weapons.js';
 
 const HIDE_DIMS = {
@@ -66,6 +67,7 @@ export class BuildingScene {
     this.mapCtx.fillRect(0, 0, W, H);
 
     this.buildYard();
+    this.computeIndoor();
     this.buildHiding();
     this.buildContainers();
     this.buildTraps();
@@ -81,7 +83,7 @@ export class BuildingScene {
     // companions arrive with the player
     companions.forEach((rec, i) => {
       const sp = this.d.spawn;
-      const a = new SurvivorActor(game, rec, sp.x + (i % 2 ? 1.2 : -1.2), sp.z + 1 + Math.floor(i / 2), 'follow', this.group);
+      const a = new SurvivorActor(game, rec, sp.x + (i % 2 ? 1.2 : -1.2), sp.z - 1.2 - Math.floor(i / 2) * 1.2, 'follow', this.group);
       this.actors.push(a);
     });
     for (let y = this.d.yard.y - 1; y <= this.d.yard.y + this.d.yard.h; y++)
@@ -90,39 +92,53 @@ export class BuildingScene {
 
   // ------------------------------------------------------------ build
   buildYard() {
-    const d = this.d;
-    const m = makeExitMarker();
-    m.group.position.set(d.exit.x, 0, d.exit.z);
-    m.group.rotation.y = Math.PI;
-    this.group.add(m.group);
-    this.exitMarker = { x: d.exit.x, z: d.exit.z, glow: m.glow };
-    this.world.addCollider(d.exit.x - 0.7, d.exit.z - 1.7, d.exit.x + 0.7, d.exit.z - 0.7);
-    // door frame on the building entrance
-    const fr = M.makeDoorFrame(TILE - 0.5);
-    fr.group.remove(fr.rune);
-    fr.group.position.set((d.door.x + 0.5) * TILE, 0, (d.door.y + 1) * TILE);
-    this.group.add(fr.group);
-    // daylight over the yard
-    const yw = d.yardWorld;
-    this.yardLight = new THREE.PointLight(0xfff2dc, 40, 22, 1.0);
-    this.yardLight.position.set((yw.x0 + yw.x1) / 2, WALL_H + 3, (yw.z0 + yw.z1) / 2);
-    this.group.add(this.yardLight);
-    // sign with the location's name over the door
-    const c = document.createElement('canvas');
-    c.width = 256;
-    c.height = 48;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#1a1612';
-    ctx.fillRect(0, 0, 256, 48);
-    ctx.fillStyle = '#d8c8a0';
-    ctx.font = 'bold 26px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(this.loc.name.toUpperCase().slice(0, 18), 128, 33);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 0.52), new THREE.MeshLambertMaterial({ map: t }));
-    sign.position.set((d.door.x + 0.5) * TILE, WALL_H + 0.3, d.yard.y * TILE + 0.03);
-    this.group.add(sign);
+    // the building's shell, roof and signage, its lot and the street outside
+    const ext = buildExterior(this);
+    this.exitMarker = ext.exit;
+  }
+
+  // How far each tile is from open air (the lot), for the lighting blend.
+  computeIndoor() {
+    const { W, H, tiles } = this.d;
+    const dist = new Uint8Array(W * H).fill(255);
+    const q = [];
+    for (let i = 0; i < W * H; i++)
+      if (tiles[i] === T.YARD) {
+        dist[i] = 0;
+        q.push(i);
+      }
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h];
+      const x = i % W;
+      const y = (i - x) / W;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        if (tiles[j] === T.ROCK || dist[j] !== 255) continue;
+        dist[j] = Math.min(254, dist[i] + 1);
+        q.push(j);
+      }
+    }
+    this.airDist = dist;
+  }
+
+  // 0 out in the open, 1 well inside; ramps through the doorway.
+  indoorAt(x, z) {
+    const tx = Math.floor(x / TILE);
+    const ty = Math.floor(z / TILE);
+    if (tx < 0 || ty < 0 || tx >= this.d.W || ty >= this.d.H) return 0;
+    const dd = this.airDist[ty * this.d.W + tx];
+    if (dd === 0) return 0;
+    if (dd === 1) return 0.2 + 0.5 * Math.min(1, Math.max(0, (this.d.front * TILE - z) / TILE));
+    if (dd === 2) return 0.85;
+    return dd === 255 ? 0 : 1;
   }
 
   buildHiding() {
@@ -286,12 +302,11 @@ export class BuildingScene {
       g.ui.message(this.rng.pick(['Empty. Someone got here first.', 'Nothing but dust.', 'Picked clean.']), 'dim');
       return;
     }
-    for (const it of items) {
-      const w = grantItem(run, it);
-      if (w) {
-        const def = WEAPONS[w.id];
+    for (const it of grantLoot(run, items, this.L.ammo)) {
+      if (it.weapon) {
+        const def = WEAPONS[it.weapon.id];
         g.ui.message(`Found a ${def.name} (${RARITY[def.rarity].name})`, 'rarity-' + def.rarity, 4);
-      } else g.ui.message(`Found ${describeItem(it)}`, it.k === 'scrap' ? 'gold' : 'good');
+      } else g.ui.message(`Found ${describeItem(it)}`, it.k === 'scrap' ? 'gold' : it.k === 'food' ? 'food' : 'good');
       g.trip.found.push(it);
     }
     this.loc.containers[c.idx] = [];
@@ -381,14 +396,10 @@ export class BuildingScene {
           const push = (min - d) / 2;
           const nx = dx / d;
           const nz = dz / d;
-          if (a.type !== 'angel') {
-            a.pos.x -= nx * push * (b.type === 'angel' ? 2 : 1);
-            a.pos.z -= nz * push * (b.type === 'angel' ? 2 : 1);
-          }
-          if (b.type !== 'angel') {
-            b.pos.x += nx * push * (a.type === 'angel' ? 2 : 1);
-            b.pos.z += nz * push * (a.type === 'angel' ? 2 : 1);
-          }
+          a.pos.x -= nx * push;
+          a.pos.z -= nz * push;
+          b.pos.x += nx * push;
+          b.pos.z += nz * push;
         }
         // Brutes and Grunts still brawl when they cross paths
         const pair = (a.type === 'brute' && b.type === 'grunt') || (a.type === 'grunt' && b.type === 'brute');
@@ -421,7 +432,7 @@ export class BuildingScene {
         continue;
       }
       for (const e of this.enemies) {
-        if (!e.alive || e.type === 'angel' || e.stun > 0) continue;
+        if (!e.alive || e.stun > 0) continue;
         if (dist2D(bt.x, bt.z, e.pos.x, e.pos.z) < 0.45 + e.radius * 0.5) {
           bt.armed = false;
           M.setBearTrapOpen(bt.jaws, false);

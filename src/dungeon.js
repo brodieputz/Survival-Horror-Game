@@ -1,5 +1,5 @@
 // Procedural building interiors. Produces a pure-data description of one
-// location: the tile grid (rooms + corridors), an open-air entrance yard where
+// location: the tile grid (rooms + corridors), an open-air street-front lot where
 // the player arrives and leaves, and placements for loot containers,
 // survivors, hiding spots, hazards and zombies. Nothing here touches three.js.
 import { RNG, MinHeap } from './util.js';
@@ -52,16 +52,14 @@ export function enemyRoster(loc, rng, roomCount) {
   const out = [];
   for (let i = 0; i < count; i++) out.push(pickWeighted(rng, w));
   const brutes = d >= 3 ? Math.min(3, 1 + Math.floor((d - 3) / 2)) : 0;
-  const angels = d >= 4 ? Math.min(3, Math.floor((d - 2) / 2)) : 0;
   for (let i = 0; i < brutes; i++) out.push('brute');
-  for (let i = 0; i < angels; i++) out.push('angel');
   return out;
 }
 
 export function generateBuilding(loc, biome) {
   const L = LOCATION_TYPES[loc.type];
   const rng = new RNG(loc.seed);
-  const W = Math.min(L.size + loc.difficulty * 2, 60);
+  const W = Math.min(L.size + loc.difficulty * 2, 56);
   const H = W;
   const tiles = new Uint8Array(W * H); // ROCK
   const roomOf = new Int16Array(W * H).fill(-1);
@@ -69,29 +67,38 @@ export function generateBuilding(loc, biome) {
   const idx = (x, y) => y * W + x;
   const inb = (x, y) => x >= 1 && y >= 1 && x < W - 1 && y < H - 1;
 
-  // ---------- Entrance yard (open air) on the south edge ----------
-  const YW = 5;
-  const YH = 4;
-  const yard = { x: rng.int(3, W - YW - 4), y: H - YH - 2, w: YW, h: YH, id: 0, yard: true };
+  // ---------- Street-front lot (open air) along the south edge ----------
+  // The building's front wall runs straight along the north side of the lot;
+  // the street lies beyond the last row.
+  const YW = Math.min(L.lot[0], W - 4);
+  const YH = L.lot[1];
+  const lotTop = H - 1 - YH;
+  const doorX = rng.int(Math.floor(W * 0.32), Math.ceil(W * 0.68) - 1);
+  const lotX0 = Math.max(1, Math.min(W - 1 - YW, doorX - Math.floor(YW / 2) + rng.int(-1, 1)));
+  const yard = { x: lotX0, y: lotTop, w: YW, h: YH, id: 0, yard: true };
   yard.cx = yard.x + (YW - 1) / 2;
   yard.cy = yard.y + (YH - 1) / 2;
-  for (let y = yard.y - 1; y <= yard.y + YH; y++)
-    for (let x = yard.x - 1; x <= yard.x + YW; x++) if (x >= 0 && y >= 0 && x < W && y < H) forbidden[idx(x, y)] = 1;
+  for (let y = lotTop - 1; y < H; y++) for (let x = 0; x < W; x++) forbidden[idx(x, y)] = 1;
   for (let y = yard.y; y < yard.y + YH; y++)
     for (let x = yard.x; x < yard.x + YW; x++) {
       tiles[idx(x, y)] = T.YARD;
       roomOf[idx(x, y)] = 0;
     }
   const rooms = [yard];
+  // small places (a house, a gas station) keep their rooms in a band around
+  // the door so the building has a believable footprint
+  const bx0 = L.band ? Math.max(2, doorX - Math.floor(L.band / 2)) : 2;
+  const bx1 = L.band ? Math.min(W - 2, bx0 + L.band) : W - 2;
 
   // ---------- Rooms ----------
   const target = rng.int(L.rooms[0], L.rooms[1]) + Math.floor(loc.difficulty / 2);
   for (let a = 0; a < 1400 && rooms.length < target + 1; a++) {
     const w = rng.int(L.room[0], L.room[1]);
     const h = rng.int(L.room[0], L.room[1]);
-    const x = rng.int(2, W - w - 2);
-    const y = rng.int(2, H - h - YH - 3);
-    if (y < 2) continue;
+    const x = rng.int(bx0, bx1 - w);
+    if (x < bx0) continue;
+    const y = rng.int(2, lotTop - 3 - h);
+    if (y < 2 || y + h > lotTop - 3) continue;
     let ok = true;
     for (const r of rooms) {
       const m = r.yard ? 3 : 2;
@@ -110,8 +117,8 @@ export function generateBuilding(loc, biome) {
       }
   }
 
-  // ---------- Front door (north side of the yard) ----------
-  const door = { x: Math.round(yard.cx), y: yard.y - 1, dir: [0, -1] };
+  // ---------- Front door (in the building's front wall) ----------
+  const door = { x: doorX, y: lotTop - 1, dir: [0, -1] };
   tiles[idx(door.x, door.y)] = T.FLOOR;
   const outside = { x: door.x, y: door.y - 1 };
   tiles[idx(outside.x, outside.y)] = T.FLOOR;
@@ -292,7 +299,7 @@ export function generateBuilding(loc, biome) {
     door,
     outside,
     blocked,
-    theme: { ...L.theme, yard: L.yard === 'biome' ? BIOMES[biome].ground : L.yard },
+    theme: { ...L.theme, yard: L.yard === 'biome' ? BIOMES[biome].ground : L.yard, outside: BIOMES[biome].ground },
     hiding: [],
     containers: [],
     survivors: [],
@@ -455,11 +462,24 @@ export function generateBuilding(loc, biome) {
     out.enemies.push({ type, x: c.x, z: c.z });
   }
 
-  // ---------- Yard: arrival point and the way home ----------
-  out.yardWorld = { x0: yard.x * TILE, z0: yard.y * TILE, x1: (yard.x + YW) * TILE, z1: (yard.y + YH) * TILE };
+  // ---------- The building's outline, the lot and the way home ----------
+  let minX = W;
+  let maxX = 0;
+  let minY = H;
+  for (let y = 0; y < lotTop; y++)
+    for (let x = 0; x < W; x++)
+      if (tiles[idx(x, y)] !== T.ROCK) {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+      }
+  out.lot = { x0: yard.x, x1: yard.x + YW - 1, y0: lotTop, y1: H - 2 };
+  out.shell = { x0: Math.max(0, Math.min(minX - 1, yard.x - 1)), x1: Math.min(W - 1, Math.max(maxX + 1, yard.x + YW)), y0: Math.max(0, minY - 1), y1: lotTop - 1 };
+  out.front = lotTop;
+  out.yardWorld = { x0: yard.x * TILE, z0: lotTop * TILE, x1: (yard.x + YW) * TILE, z1: (H - 1) * TILE };
   const doorWX = (door.x + 0.5) * TILE;
-  out.spawn = { x: doorWX, z: (yard.y + YH - 1.2) * TILE, yaw: 0 };
-  const exitX = rng.chance(0.5) ? (yard.x + 0.7) * TILE : (yard.x + YW - 0.7) * TILE;
-  out.exit = { x: exitX, z: (yard.y + YH - 0.6) * TILE };
+  out.spawn = { x: doorWX, z: (H - 1) * TILE - 2.2, yaw: 0 };
+  out.exit = { x: doorWX + 2.6, z: (H - 1) * TILE - 1.0 };
+  out.lotType = loc.type;
   return out;
 }

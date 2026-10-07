@@ -32,7 +32,14 @@
   #fade { background: #000; opacity: 0; }
   #grain { opacity: 0.07; mix-blend-mode: overlay; background-size: 200px 200px; animation: grain 0.5s steps(4) infinite; }
   @keyframes grain { 0% { background-position: 0 0; } 25% { background-position: -60px 40px; } 50% { background-position: 80px -30px; } 75% { background-position: -40px -90px; } 100% { background-position: 0 0; } }
-  #scan { background: repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0px, rgba(0,0,0,0.12) 1px, transparent 1px, transparent 3px); opacity: 0.5; }
+  body.post #grain { display: none; }
+  #letterbox .lb { position: fixed; left: 0; right: 0; height: 0; background: #000; transition: height 0.8s ease; z-index: 4; pointer-events: none; overflow: hidden; }
+  #letterbox .top { top: 0; }
+  #letterbox .bottom { bottom: 0; display: flex; align-items: center; justify-content: flex-end; }
+  #letterbox span { color: rgba(232,220,192,0.4); font-size: 18px; letter-spacing: 4px; margin-right: 36px; opacity: 0; transition: opacity 0.8s; }
+  body.cine #letterbox .lb { height: 11.5vh; }
+  body.cine #letterbox span { opacity: 1; }
+  body.cine #hud > :not(#banner) { visibility: hidden; }
 
   /* hiding masks */
   .mask { display: none; }
@@ -91,7 +98,7 @@
   #prompt b { color: var(--gold); border: 1px solid var(--gold); padding: 0 6px; margin-right: 6px; font-weight: normal; }
   #prompt i { color: var(--bone-dim); font-style: normal; }
 
-  #msgs { position: absolute; left: 50%; top: 16%; transform: translateX(-50%); width: 80vw; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  #msgs { position: absolute; left: 50%; top: 21.5%; transform: translateX(-50%); width: min(64vw, 900px); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .msg { font-size: 26px; color: var(--bone); background: rgba(0,0,0,0.35); padding: 0 12px; }
   .msg.gold { color: var(--gold); }
   .msg.good { color: #b6e08a; }
@@ -99,7 +106,7 @@
   .msg.dim { color: var(--bone-dim); }
   .msg.diamond { color: var(--ice); }
 
-  #banner { position: absolute; left: 0; right: 0; top: 30%; text-align: center; opacity: 0; transition: opacity 0.8s; }
+  #banner { position: absolute; left: 0; right: 0; top: 35%; text-align: center; opacity: 0; transition: opacity 0.8s; }
   #banner.show { opacity: 1; }
   #bannerT { font-family: var(--title); font-size: clamp(42px, 8vw, 92px); color: var(--blood); letter-spacing: 8px; text-shadow: 0 0 20px #000, 0 0 40px #400, 3px 3px 0 #000; }
   #bannerS { font-size: 32px; color: var(--bone); margin-top: 4px; }
@@ -126,6 +133,7 @@
   .settings { display: grid; grid-template-columns: auto 220px; gap: 8px 16px; font-size: 24px; margin: 12px; align-items: center; text-align: left; pointer-events: auto; }
   .settings input[type=range] { accent-color: var(--blood); }
   .settings input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--blood); }
+  .settings select { font: inherit; font-size: 20px; background: #1a1612; color: #e8dcc0; border: 1px solid #5a4a3a; padding: 2px 6px; }
 
   /* shop */
   #shop { background: radial-gradient(ellipse at center, rgba(30,16,8,0.9), rgba(0,0,0,0.96)); }
@@ -172,7 +180,8 @@
   #locLine { font-size: 20px; color: var(--bone-dim); margin-bottom: 4px; }
   #res { display: flex; gap: 16px; font-size: 26px; }
   #res span b { font-weight: normal; }
-  .r-scrap { color: #c8b890; } .r-coal { color: #9aa0a8; } .r-med { color: #ff7a6a; }
+  .r-scrap { color: #c8b890; } .r-coal { color: #9aa0a8; } .r-med { color: #ff7a6a; } .r-food { color: #c8d07a; } .r-food.short { color: #ff5a4a; }
+  .msg.food { color: #c8d07a; }
   #squad { margin-top: 6px; width: 200px; }
   .sq { font-size: 17px; display: grid; grid-template-columns: 1fr 70px; gap: 4px; align-items: center; color: var(--bone); }
   .sq .hb { height: 6px; background: #300; border: 1px solid #000; } .sq .hb i { display: block; height: 100%; background: #c8302a; }
@@ -232,6 +241,9 @@
   .camp-dot { position: absolute; transform: translate(-50%, -50%); font-size: 26px; color: #6a1a10; }
   .skulls { color: #b3150f; letter-spacing: 1px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .appraisal { font-size: 19px; margin: 6px 0; line-height: 1.15; }
+  .appraisal.small { font-size: 17px; border-top: 1px solid #2a1a10; padding-top: 4px; }
+  .ammo-grid small { font-size: 14px; }
   .tabs .pbtn.on { border-color: var(--gold); color: #fff; }
   .chip { pointer-events: auto; display: inline-block; border: 1px solid #5a3a20; padding: 1px 8px; margin: 2px; cursor: pointer; font-size: 18px; }
   .chip.on { border-color: #6fd05a; color: #b6e08a; }
@@ -245,9 +257,9 @@
 
 <div class="overlay mask" id="hideMask"></div>
 <div class="overlay" id="vignette"></div>
-<div class="overlay" id="scan"></div>
 <div class="overlay" id="grain"></div>
 <div class="overlay" id="hurt"></div>
+<div id="letterbox"><div class="lb top"></div><div class="lb bottom"><span>click to skip</span></div></div>
 
 <div id="hud">
   <div class="tl">
@@ -304,7 +316,6 @@
     <div class="beast"><h3>Grunt</h3><div>Hunts by sight in the halls and marches with the horde at night.</div></div>
     <div class="beast"><h3>Blood Hound</h3><div>Its shriek whips the whole horde into a frenzy. Hiding spots won't fool one on your trail.</div></div>
     <div class="beast"><h3>Blind Brute</h3><div>Hunts by sound and tears through barricades. Shoot it and it charges.</div></div>
-    <div class="beast"><h3>Angel</h3><div>Lurks deep inside dangerous buildings. Moves only when unseen. Cannot be killed.</div></div>
   </div>
 </div>
 
@@ -315,7 +326,7 @@
     <span>Master volume</span><input type="range" id="setMaster" min="0" max="1" step="0.01" />
     <span>Music volume</span><input type="range" id="setMusic" min="0" max="1" step="0.01" />
     <span>Effects volume</span><input type="range" id="setSfx" min="0" max="1" step="0.01" />
-    <span>Retro pixel rendering</span><input type="checkbox" id="setRetro" />
+    <span>Graphics</span><select id="setQuality"><option value="cinematic">Cinematic</option><option value="balanced">Balanced</option><option value="retro">Retro (pixelated)</option></select>
   </div>
   <button class="btn" id="resumeBtn">RESUME</button>
   <button class="btn" id="quitBtn">SAVE &amp; QUIT</button>

@@ -1,7 +1,7 @@
 // DOM HUD, minimaps and the camp management panels (armory, survivors,
 // barricade, turrets, local & regional maps, reports).
 import { TILE, TRAPS, TRAP_ORDER, TURRETS, TURRET_ORDER, BARRICADE, TRAVEL_HOURS } from './config.js';
-import { WEAPONS, RARITY, RARITY_ORDER, AMMO, AMMO_ORDER, CATEGORY, UPGRADES, UPG_MAX, upgradeKeys, upgradeCost, weaponStats, isExplosive } from './weapons.js';
+import { WEAPONS, WEAPON_LIST, RARITY, RARITY_ORDER, AMMO, AMMO_ORDER, CATEGORY, UPGRADES, UPG_MAX, upgradeKeys, upgradeCost, weaponStats, isExplosive } from './weapons.js';
 import {
   BIOMES,
   LOCATION_TYPES,
@@ -15,6 +15,8 @@ import {
   holderOf,
   expeditionChance,
   waveChance,
+  mouthsToFeed,
+  appraisal,
 } from './run.js';
 
 const $ = (id) => document.getElementById(id);
@@ -30,11 +32,11 @@ const DEATH_TEXT = {
   crawler: 'Something crawled out of the dark and bit.',
   hound: 'Mauled by a Blood Hound.',
   brute: 'Crushed by the Blind Brute.',
-  angel: 'You looked away. The Angel did not.',
   spikes: 'Impaled on rusted spikes.',
   beartrap: 'Bled out in the jaws of a trap.',
   explosion: 'Caught in your own blast.',
   fire: 'Burned alive.',
+  starvation: 'You starved to death.',
 };
 
 const skulls = (n) => '☠'.repeat(n);
@@ -149,10 +151,11 @@ export class UI {
     const b = BIOMES[run.locality.biome];
     this.set('loc', this.el.locLine, `${run.locality.name} · ${b.name} · wave chance ${Math.round(waveChance(run) * 100)}%`);
     const bp = run.blueprints.mg + run.blueprints.missile + run.blueprints.artillery;
+    const mouths = mouthsToFeed(run);
     this.set(
       'res',
       this.el.res,
-      `<span class="r-scrap">⚙ <b>${run.scrap}</b></span><span class="r-coal">◼ <b>${run.coal}</b> coal</span><span class="r-med">✚ <b>${run.medkits}</b></span>` +
+      `<span class="r-scrap">⚙ <b>${run.scrap}</b></span><span class="r-food ${run.food < mouths ? 'short' : ''}">◍ <b>${run.food}</b> food</span><span class="r-coal">◼ <b>${run.coal}</b> coal</span><span class="r-med">✚ <b>${run.medkits}</b></span>` +
         (bp ? `<span class="muted">✎ ${bp}</span>` : ''),
       'innerHTML'
     );
@@ -386,6 +389,7 @@ export class UI {
       turret: () => this.panelTurret(),
       map: () => this.panelMap(),
       sleep: () => this.panelSleep(),
+      wait: () => this.panelWait(),
       report: () => this.panelReport(),
     }[P.kind]();
     this.el.panelTitle.textContent = r.title;
@@ -399,7 +403,7 @@ export class UI {
 
   resLine() {
     const run = this.game.run;
-    return `<span class="r-scrap">⚙ ${run.scrap} scrap</span> · <span class="r-coal">◼ ${run.coal} coal</span> · <span class="r-med">✚ ${run.medkits} med kits</span>`;
+    return `<span class="r-scrap">⚙ ${run.scrap} scrap</span> · <span class="r-food">◍ ${run.food} food (${mouthsToFeed(run)}/day)</span> · <span class="r-coal">◼ ${run.coal} coal</span> · <span class="r-med">✚ ${run.medkits} med kits</span>`;
   }
 
   holderLabel(uid) {
@@ -425,7 +429,7 @@ export class UI {
       left += `<button class="witem ${P.sel === w.uid ? 'sel' : ''}" data-act="selw" data-uid="${w.uid}"><span>${rname(def)}${lv ? ` <small>+${lv}</small>` : ''}</span><small>${esc(this.holderLabel(w.uid))}</small></button>`;
     }
     left += `</div></div><div class="box" style="margin-top:8px"><h3>Ammunition</h3><div class="ammo-grid">`;
-    for (const k of AMMO_ORDER) left += `<span>${AMMO[k].name}</span><b>${run.ammo[k] || 0}</b>`;
+    for (const k of AMMO_ORDER) left += `<span title="${esc(AMMO[k].desc)}">${AMMO[k].name}<small class="muted"> · ${esc(AMMO[k].desc.toLowerCase())}</small></span><b>${run.ammo[k] || 0}</b>`;
     left += `</div></div>`;
 
     let mid = '<div class="box">';
@@ -434,7 +438,7 @@ export class UI {
       const def = WEAPONS[inst.id];
       const s = weaponStats(inst, run.player.level);
       const melee = def.cat === 'melee';
-      mid += `<h3 style="font-size:30px">${rname(def)}</h3><div class="muted">${RARITY[def.rarity].name} ${CATEGORY[def.cat]}${def.ammo ? ` · uses ${AMMO[def.ammo].name.toLowerCase()}` : ''}${isExplosive(def) ? ' · <span class="muted">survivors use it slowly</span>' : ''}</div>`;
+      mid += `<h3 style="font-size:30px">${rname(def)}</h3><div class="muted">${RARITY[def.rarity].name} ${CATEGORY[def.cat]}${def.ammo ? ` · uses ${AMMO[def.ammo].name.toLowerCase()} (shared by ${WEAPON_LIST.filter((w) => w.ammo === def.ammo).length} weapons)${def.ammoPer ? `, ${def.ammoPer} per throw` : ''}` : ''}${isExplosive(def) ? ' · <span class="muted">survivors use it slowly</span>' : ''}</div>`;
       mid += `<div style="margin:6px 0">`;
       mid += `<div class="stat-row"><span>Damage</span>${bar(s.dmg * s.pellets, 300)}<span>${Math.round(s.dmg)}${s.pellets > 1 ? '×' + s.pellets : ''}</span></div>`;
       mid += `<div class="stat-row"><span>${melee ? 'Swing rate' : 'Fire rate'}</span>${bar(s.rate, 20)}<span>${s.rate.toFixed(1)}/s</span></div>`;
@@ -555,6 +559,19 @@ export class UI {
     };
   }
 
+  panelWait() {
+    const run = this.game.run;
+    const opts = [1, 2, 4].filter((h) => h < run.hours);
+    let b = '';
+    for (const h of opts) b += `<button class="pbtn big" data-act="wait" data-h="${h}">${h} ${h === 1 ? 'hour' : 'hours'}</button>`;
+    b += `<button class="pbtn big warn" data-act="wait" data-h="dusk">Until dusk (${run.hours}h)</button>`;
+    return {
+      title: 'REST BY THE FIRE',
+      sub: '',
+      body: `<div class="box" style="max-width:680px;margin:auto;text-align:center"><p>${run.hours} ${run.hours === 1 ? 'hour' : 'hours'} of daylight left. How long do you sit?</p><div>${b}</div><p class="muted">Survivors you've sent out come back at dusk.</p><button class="pbtn" data-act="close">Get up</button></div>`,
+    };
+  }
+
   panelReport() {
     const lines = this.panel.arg || [];
     let body = `<div class="box report" style="max-width:820px;margin:auto">`;
@@ -581,7 +598,7 @@ export class UI {
     const left = `<div class="mapwrap"><canvas id="localMapCanvas" width="640" height="480"></canvas>${markers}</div>`;
     const loc = locs.find((l) => l.id === P.sel);
     let right = '<div class="box">';
-    if (!loc) right += `<h3>${esc(run.locality.name)}</h3><div class="muted">Pick a location on the map. Searching costs daylight hours. Bring survivors along, or send one alone to search it for you.</div>`;
+    if (!loc) right += `<h3>${esc(run.locality.name)}</h3><div class="appraisal">${this.appraisalHtml(run.locality.profile)}</div><div class="muted">Pick a location on the map. Searching costs daylight hours. Bring survivors along, or send one alone to search it for you.</div>`;
     else {
       const L = LOCATION_TYPES[loc.type];
       right += `<h3>${L.icon} ${esc(loc.name)}</h3><div class="muted">${L.name}</div>`;
@@ -609,6 +626,15 @@ export class UI {
     }
     right += '</div>';
     return { title: 'LOCAL MAP', sub, body: tabs + `<div class="cols2"><div>${left}</div><div>${right}</div></div>` };
+  }
+
+  appraisalHtml(profile) {
+    if (!profile) return '';
+    const text = appraisal(profile);
+    const cut = text.lastIndexOf(';');
+    const danger = text.slice(cut + 1).trim();
+    const cls = ['good', 'gold', 'bad', 'bad'][profile.danger];
+    return `${esc(text.slice(0, cut))}; <b class="${cls}">${esc(danger)}</b>`;
   }
 
   lootHint(L) {
@@ -686,13 +712,18 @@ export class UI {
     if (i != null) {
       const o = opts[i];
       const b = BIOMES[o.biome];
-      right += `<h3 style="margin-top:8px">${b.icon} ${esc(o.name)}</h3><div>${b.name}${o.threat ? ' · <span class="bad">dangerous country</span>' : ''}</div>`;
+      right += `<h3 style="margin-top:8px">${b.icon} ${esc(o.name)}</h3><div class="muted">${b.name}</div>`;
+      right += `<div class="appraisal">${this.appraisalHtml(o.profile)}</div>`;
       right += `<div>Coal needed: <b class="${run.coal >= o.coal ? 'good' : 'bad'}">${o.coal}</b> (you have ${run.coal})</div><div>Takes ${TRAVEL_HOURS} hours of daylight.</div>`;
       const can = run.coal >= o.coal && run.phase === 'day' && run.hours >= TRAVEL_HOURS && !busy;
       right += `<button class="pbtn big" data-act="travel" data-i="${i}" ${can ? '' : 'disabled'}>Fire up the engine</button>`;
       if (busy) right += `<div class="bad">Wait for the survivors you sent out to come back.</div>`;
       else if (run.phase !== 'day' || run.hours < TRAVEL_HOURS) right += `<div class="bad">Not enough daylight to travel today.</div>`;
-    } else right += `<div style="margin-top:8px">Pick a destination. You have <b>${run.coal}</b> coal.</div>`;
+    } else {
+      right += `<div style="margin-top:8px">Pick a destination. You have <b>${run.coal}</b> coal.</div>`;
+      opts.forEach((o) => (right += `<div class="appraisal small"><b>${BIOMES[o.biome].icon} ${esc(o.name)}</b> · ◼ ${o.coal}<br>${this.appraisalHtml(o.profile)}</div>`));
+    }
+    right += `<div class="muted" style="margin-top:8px;font-size:17px">Here: ${esc(run.locality.name)} — ${this.appraisalHtml(run.locality.profile)}</div>`;
     right += `</div>`;
     return `<div class="cols2"><div>${left}</div><div>${right}</div></div>`;
   }
@@ -783,11 +814,11 @@ export class UI {
     bind('setMaster', 'master', (v) => g.audio.setVolume('master', v));
     bind('setMusic', 'music', (v) => g.audio.setVolume('music', v));
     bind('setSfx', 'sfx', (v) => g.audio.setVolume('sfx', v));
-    const retro = $('setRetro');
-    if (retro) {
-      retro.checked = !!s.retro;
-      retro.addEventListener('change', () => {
-        s.retro = retro.checked;
+    const quality = $('setQuality');
+    if (quality) {
+      quality.value = s.quality;
+      quality.addEventListener('change', () => {
+        s.quality = quality.value;
         g.applyResolution();
         g.saveSettings();
       });

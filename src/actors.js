@@ -1,72 +1,120 @@
-// Low-poly humanoid rigs: zombie variants and human survivors. Every rig
-// exposes the same joints (hips, torso, head, jaw, arms, legs) so the
-// animation code can drive them all the same way.
+// Humanoid rigs: zombie variants and human survivors. Everyone is built to
+// the same real-world scale (about 1.8 m tall, eyes at ~1.68 m, matching the
+// player's eye line). Every rig exposes the same joints (hips, torso, head,
+// jaw, arms, legs) so the animation code can drive them all the same way.
 import * as THREE from 'three';
 import { tex } from './textures.js';
-import { box, pivot, lambert as L, basic as B } from './models.js';
+import { pivot, lambert as L, basic as B } from './models.js';
 
+export const HUMAN_HEIGHT = 1.8;
+export const HUMAN_EYE = 1.68;
+
+const caps = new Map();
+function capsule(r, len, mat, x = 0, y = 0, z = 0, sx = 1, sz = 1) {
+  const key = r + ':' + len;
+  if (!caps.has(key)) caps.set(key, new THREE.CapsuleGeometry(r, len, 4, 10));
+  const m = new THREE.Mesh(caps.get(key), mat);
+  m.position.set(x, y, z);
+  m.scale.set(sx, 1, sz);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+function ball(r, mat, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), mat);
+  m.position.set(x, y, z);
+  m.scale.set(sx, sy, sz);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+function block(w, h, d, mat, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+// o: skin, shirt, pants, boots, build (1 = average), lean, eyes, hair...
 function humanoid(o) {
-  const skin = L({ color: o.skin, map: tex('flesh', o.fleshSeed ?? 11) });
-  const shirt = L({ color: o.shirt });
-  const pants = L({ color: o.pants });
-  const boots = L({ color: o.boots ?? 0x1a1410 });
+  const build = o.build ?? 1;
+  const skin = L({ color: o.skin, map: tex('flesh', o.fleshSeed ?? 11), roughness: 0.75 });
+  const shirt = L({ color: o.shirt, map: tex('fabric', o.fabricSeed ?? 40), roughness: 0.95 });
+  const pants = L({ color: o.pants, map: tex('denim', 41), roughness: 0.95 });
+  const boots = L({ color: o.boots ?? 0x1a1410, roughness: 0.7 });
   const root = new THREE.Group();
-  const hips = pivot(root, 0, o.hipY, 0);
+  const hipY = o.hipY ?? 0.94;
+  const hips = pivot(root, 0, hipY, 0);
   const torso = pivot(hips, 0, 0, 0);
   torso.rotation.x = o.lean;
-  const tw = o.torsoW;
-  const th = o.torsoH;
-  const td = o.torsoD ?? 0.32;
-  torso.add(box(tw, th, td, o.shirtless ? skin : shirt, 0, th / 2 + 0.05, 0));
-  torso.add(box(tw * 0.92, 0.2, td * 0.95, pants, 0, 0.02, 0)); // belt line
-  if (o.shirtless) torso.add(box(tw * 0.9, 0.08, td * 1.02, shirt, 0, 0.18, 0)); // rag
-  const neckY = th + 0.08;
-  const head = pivot(torso, 0, neckY + 0.06, o.headFwd ?? 0.04);
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(o.headR ?? 0.18, 8, 6), skin);
-  skull.scale.set(1, 1.12, 1.05);
-  skull.position.y = 0.1;
-  skull.castShadow = true;
-  head.add(skull);
-  const jaw = pivot(head, 0, 0.0, 0.02);
-  jaw.add(box(0.22, 0.07, 0.18, skin, 0, -0.03, 0.06));
-  const eyeMat = B({ color: o.eyes ?? 0xd8d8b0 });
-  for (const s of [-1, 1]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(o.eyeR ?? 0.028, 5, 4), eyeMat);
-    e.position.set(s * 0.068, 0.13, 0.165);
-    head.add(e);
-  }
+  const sw = 0.2 * build; // half shoulder width
+  const top = o.shirtless ? skin : shirt;
+  // pelvis, belly, chest
+  hips.add(capsule(0.13, 0.08, pants, 0, 0.04, 0, 1.25 * build, 0.85));
+  torso.add(capsule(0.135, 0.1, top, 0, 0.2, 0, 1.15 * build, 0.82));
+  torso.add(capsule(0.155, 0.12, top, 0, 0.37, 0.005, 1.28 * build, 0.82));
+  if (o.belly) torso.add(ball(0.26, top, 0, 0.22, 0.09, 1.15, 1, 1.05));
+  // neck & head
+  torso.add(capsule(0.05, 0.06, skin, 0, 0.55, 0.01));
+  const head = pivot(torso, 0, 0.6, o.headFwd ?? 0.02);
+  head.add(ball(0.105, skin, 0, 0.1, 0, 0.92, 1.12, 1.0));
+  head.add(block(0.03, 0.04, 0.03, skin, 0, 0.09, 0.1)); // nose
+  for (const s of [-1, 1]) head.add(ball(0.022, skin, s * 0.1, 0.1, -0.005, 0.6, 1, 1)); // ears
+  const jaw = pivot(head, 0, 0.04, 0.02);
+  jaw.add(block(0.13, 0.04, 0.1, skin, 0, -0.01, 0.03));
+  const eyeMat = B({ color: o.eyes ?? 0x1a1410 });
+  for (const s of [-1, 1]) head.add(ball(o.eyeR ?? 0.014, eyeMat, s * 0.038, 0.12, 0.092));
   if (o.hair != null) {
-    const hair = L({ color: o.hair });
-    const cap = new THREE.Mesh(new THREE.SphereGeometry((o.headR ?? 0.18) * 1.06, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.5), hair);
-    cap.position.set(0, 0.13, -0.01);
-    cap.rotation.x = -0.25;
+    const hair = L({ color: o.hair, roughness: 0.9 });
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.112, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hair);
+    cap.position.set(0, 0.12, -0.008);
+    cap.rotation.x = -0.2;
+    cap.castShadow = true;
     head.add(cap);
-    if (o.longHair) head.add(box(0.3, 0.3, 0.08, hair, 0, -0.02, -0.15));
+    if (o.longHair) head.add(block(0.2, 0.22, 0.06, hair, 0, 0.04, -0.09));
   }
   const arms = [];
-  const armLen = o.armLen ?? 0.66;
   for (const s of [-1, 1]) {
-    const sh = pivot(torso, s * (tw / 2 + 0.07), th - 0.04, 0);
-    sh.add(box(0.13, armLen * 0.52, 0.13, o.sleeves === false ? skin : shirt, 0, -armLen * 0.26, 0));
-    const fore = pivot(sh, 0, -armLen * 0.52, 0);
-    fore.add(box(0.11, armLen * 0.5, 0.11, skin, 0, -armLen * 0.25, 0));
-    fore.add(box(0.1, 0.1, 0.1, skin, 0, -armLen * 0.52, 0.01));
+    const sh = pivot(torso, s * (sw + 0.035), 0.47, 0);
+    sh.add(ball(0.06, top, 0, 0, 0)); // shoulder
+    sh.add(capsule(0.05, 0.2, o.sleeves === false ? skin : top, 0, -0.15, 0));
+    const fore = pivot(sh, 0, -0.29, 0);
+    fore.add(capsule(0.042, 0.19, o.longSleeves ? top : skin, 0, -0.135, 0));
+    fore.add(block(0.07, 0.09, 0.035, skin, 0, -0.3, 0.005)); // hand
     arms.push({ sh, fore, s });
   }
   const legs = [];
   if (!o.noLegs) {
-    const ul = o.hipY * 0.52;
-    const ll = o.hipY * 0.48;
     for (const s of [-1, 1]) {
-      const hip = pivot(hips, s * tw * 0.26, 0, 0);
-      hip.add(box(0.17, ul, 0.17, pants, 0, -ul / 2, 0));
-      const knee = pivot(hip, 0, -ul, 0);
-      knee.add(box(0.15, ll, 0.15, pants, 0, -ll / 2, 0));
-      knee.add(box(0.16, 0.08, 0.27, boots, 0, -ll + 0.04, 0.05));
+      const hip = pivot(hips, s * 0.1 * build, 0, 0);
+      hip.add(capsule(0.072 * Math.sqrt(build), 0.3, pants, 0, -0.23, 0));
+      const knee = pivot(hip, 0, -0.46, 0);
+      knee.add(capsule(0.056, 0.32, pants, 0, -0.22, 0));
+      knee.add(block(0.1, 0.08, 0.25, boots, 0, -0.44, 0.045));
       legs.push({ hip, knee, s });
     }
   }
-  return { root, hips, torso, head, jaw, arms, legs, hipY: o.hipY, height: o.hipY + th + 0.45, baseLean: o.lean, mats: { skin, shirt, pants } };
+  return { root, hips, torso, head, jaw, arms, legs, hipY, height: HUMAN_HEIGHT, baseLean: o.lean, build, mats: { skin, shirt, pants } };
+}
+
+// Invisible hit hulls around the torso, head and legs. Bullets are tested
+// against these rather than the slim limbs, so a shot that looks like it
+// connects does. They move with the body as it leans and staggers.
+const HULL = new THREE.MeshBasicMaterial({ visible: false });
+function addHulls(m) {
+  const b = m.build;
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.31 * b, 0.2, 2, 8), HULL);
+  torso.position.y = 0.2;
+  m.torso.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), HULL);
+  head.position.y = 0.1;
+  m.head.add(head);
+  if (m.legs.length) {
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.5 * b, 0.9, 0.3), HULL);
+    legs.position.y = -0.47;
+    m.hips.add(legs);
+  }
 }
 
 const ZSKIN = [0x8c8676, 0x7a8470, 0x8a7a72, 0x6e7a6a, 0x9a8e80];
@@ -77,62 +125,59 @@ export function makeZombie(type, rng) {
   let m;
   switch (type) {
     case 'runner':
-      m = humanoid({ skin: pick(ZSKIN), shirt: pick(ZCLOTH), pants: pick(ZCLOTH), torsoW: 0.48, torsoH: 0.72, hipY: 0.98, lean: 0.55, eyes: 0xff3010, shirtless: rng() < 0.6, sleeves: false, fleshSeed: 14 });
+      m = humanoid({ skin: pick(ZSKIN), shirt: pick(ZCLOTH), pants: pick(ZCLOTH), build: 0.9, lean: 0.45, eyes: 0xff3010, eyeR: 0.016, shirtless: rng() < 0.6, sleeves: false, fleshSeed: 14 });
       break;
     case 'fat':
-      m = humanoid({ skin: 0x9a8c7a, shirt: pick(ZCLOTH), pants: pick(ZCLOTH), torsoW: 0.92, torsoH: 0.8, torsoD: 0.62, hipY: 0.9, lean: 0.12, eyes: 0xffc020, headR: 0.2, armLen: 0.62, sleeves: false, fleshSeed: 15 });
-      {
-        const belly = new THREE.Mesh(new THREE.SphereGeometry(0.48, 9, 7), m.mats.skin);
-        belly.position.set(0, 0.36, 0.14);
-        belly.scale.set(1.05, 0.9, 0.9);
-        belly.castShadow = true;
-        m.torso.add(belly);
-      }
+      m = humanoid({ skin: 0x9a8c7a, shirt: pick(ZCLOTH), pants: pick(ZCLOTH), build: 1.45, lean: 0.1, eyes: 0xffc020, belly: true, sleeves: false, fleshSeed: 15 });
       break;
     case 'rotter':
-      m = humanoid({ skin: 0x5e7a4a, shirt: 0x2a2a1e, pants: 0x2a261a, torsoW: 0.6, torsoH: 0.8, hipY: 0.95, lean: 0.35, eyes: 0x101010, eyeR: 0.04, fleshSeed: 16, sleeves: false });
+      m = humanoid({ skin: 0x5e7a4a, shirt: 0x2a2a1e, pants: 0x2a261a, build: 0.95, lean: 0.3, eyes: 0x9aff40, eyeR: 0.016, fleshSeed: 16, sleeves: false });
       {
         const bone = L({ color: 0xb8ae96 });
-        for (let i = 0; i < 4; i++) m.torso.add(box(0.5, 0.035, 0.05, bone, 0, 0.3 + i * 0.12, 0.17));
-        const glow = B({ color: 0x9aff40 });
-        for (const s of [-1, 1]) m.head.add(box(0.03, 0.03, 0.02, glow, s * 0.068, 0.13, 0.18));
+        for (let i = 0; i < 4; i++) m.torso.add(block(0.24, 0.022, 0.03, bone, 0, 0.26 + i * 0.06, 0.13));
       }
       break;
     case 'armored':
-      m = humanoid({ skin: pick(ZSKIN), shirt: 0x1c2230, pants: 0x1a1e28, torsoW: 0.62, torsoH: 0.8, hipY: 0.98, lean: 0.2, eyes: 0xff4010, fleshSeed: 17 });
+      m = humanoid({ skin: pick(ZSKIN), shirt: 0x1c2230, pants: 0x1a1e28, build: 1.08, lean: 0.18, eyes: 0xff4010, fleshSeed: 17, longSleeves: true });
       {
-        const armor = L({ color: 0x14161c });
-        const vest = box(0.72, 0.62, 0.44, armor, 0, 0.5, 0);
-        m.torso.add(vest);
-        const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.55), armor);
-        helmet.position.y = 0.14;
+        const armor = L({ color: 0x14161c, roughness: 0.6 });
+        m.torso.add(block(0.42, 0.36, 0.3, armor, 0, 0.33, 0));
+        const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.125, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), armor);
+        helmet.position.y = 0.12;
+        helmet.castShadow = true;
         m.head.add(helmet);
-        const visor = box(0.3, 0.09, 0.04, L({ color: 0x223040, emissive: 0x0a1018 }), 0, 0.14, 0.2);
-        m.head.add(visor);
-        for (const a of m.arms) a.sh.add(box(0.2, 0.18, 0.2, armor, 0, -0.05, 0));
+        m.head.add(block(0.17, 0.05, 0.03, L({ color: 0x223040, emissive: 0x0a1018, roughness: 0.2, metalness: 0.4 }), 0, 0.12, 0.11));
+        for (const a of m.arms) a.sh.add(block(0.12, 0.1, 0.12, armor, 0, -0.03, 0));
         m.armored = true;
       }
       break;
     case 'crawler':
-      m = humanoid({ skin: pick(ZSKIN), shirt: pick(ZCLOTH), pants: pick(ZCLOTH), torsoW: 0.5, torsoH: 0.7, hipY: 0.28, lean: 1.45, eyes: 0xff3010, noLegs: true, fleshSeed: 18 });
-      {
-        const gore = L({ color: 0x5a0a0a });
-        m.hips.add(box(0.4, 0.14, 0.3, gore, 0, -0.04, 0));
-        m.crawl = true;
-        m.height = 0.75;
-      }
+      m = humanoid({ skin: pick(ZSKIN), shirt: pick(ZCLOTH), pants: pick(ZCLOTH), build: 0.95, lean: 1.45, hipY: 0.26, eyes: 0xff3010, noLegs: true, fleshSeed: 18 });
+      m.hips.add(block(0.26, 0.1, 0.2, L({ color: 0x5a0a0a }), 0, -0.04, 0));
+      m.crawl = true;
+      m.height = 0.7;
       break;
     case 'walker':
     default:
-      m = humanoid({ skin: pick(ZSKIN), shirt: pick(ZCLOTH), pants: pick(ZCLOTH), torsoW: 0.56, torsoH: 0.78, hipY: 0.95, lean: 0.3, eyes: 0xe8e0a0, hair: rng() < 0.6 ? pick([0x1a1410, 0x3a2614, 0x6a6a6a]) : null, longHair: rng() < 0.3, fleshSeed: 11 + Math.floor(rng() * 4) });
+      m = humanoid({
+        skin: pick(ZSKIN),
+        shirt: pick(ZCLOTH),
+        pants: pick(ZCLOTH),
+        build: 0.95 + rng() * 0.15,
+        lean: 0.22,
+        eyes: 0xe8e0a0,
+        eyeR: 0.016,
+        hair: rng() < 0.6 ? pick([0x1a1410, 0x3a2614, 0x6a6a6a]) : null,
+        longHair: rng() < 0.3,
+        fleshSeed: 11 + Math.floor(rng() * 4),
+        fabricSeed: 40 + Math.floor(rng() * 3),
+      });
       break;
   }
   // torn clothes and wounds
-  const blood = L({ color: 0x4a0606 });
-  for (let i = 0; i < 2; i++) {
-    const w = box(0.12 + rng() * 0.1, 0.1 + rng() * 0.1, 0.02, blood, (rng() - 0.5) * 0.3, 0.3 + rng() * 0.4, 0.17);
-    m.torso.add(w);
-  }
+  const blood = L({ color: 0x3a0404, roughness: 0.35 });
+  for (let i = 0; i < 3; i++) m.torso.add(block(0.06 + rng() * 0.08, 0.05 + rng() * 0.08, 0.02, blood, (rng() - 0.5) * 0.24, 0.15 + rng() * 0.3, 0.13));
+  addHulls(m);
   return m;
 }
 
@@ -142,27 +187,24 @@ export function makeHuman(look) {
     skin: look.skin,
     shirt: look.shirt,
     pants: look.pants,
-    torsoW: look.female ? 0.48 : 0.56,
-    torsoH: 0.74,
-    torsoD: 0.28,
-    hipY: 0.94,
-    lean: 0.04,
+    build: look.female ? 0.88 : 1.0,
+    lean: 0.03,
     eyes: 0x161210,
-    eyeR: 0.022,
     hair: look.hair,
     longHair: look.female,
-    headR: 0.17,
+    longSleeves: !look.female,
     fleshSeed: 12,
+    fabricSeed: 40 + (look.shirt % 3),
     boots: 0x2a1c10,
   });
   if (look.hat) {
-    const hat = L({ color: 0x3a3a2a });
-    m.head.add(box(0.4, 0.04, 0.4, hat, 0, 0.24, 0));
-    m.head.add(box(0.26, 0.14, 0.26, hat, 0, 0.3, 0));
+    const hat = L({ color: 0x3a3a2a, roughness: 0.9 });
+    m.head.add(block(0.28, 0.02, 0.28, hat, 0, 0.18, 0));
+    m.head.add(block(0.17, 0.09, 0.17, hat, 0, 0.23, 0));
   }
   // backpack
-  m.torso.add(box(0.36, 0.42, 0.18, L({ color: 0x3a3424 }), 0, 0.45, -0.22));
+  m.torso.add(block(0.28, 0.32, 0.12, L({ color: 0x3a3424, map: tex('fabric', 42) }), 0, 0.32, -0.17));
   const right = m.arms.find((a) => a.s === 1);
-  m.gunMount = pivot(right.fore, 0, -0.36, 0.06);
+  m.gunMount = pivot(right.fore, 0, -0.3, 0.03);
   return m;
 }

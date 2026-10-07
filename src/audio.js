@@ -920,7 +920,7 @@ export class AudioSys {
   }
 
   // ------------------------------------------------------------ loops
-  // A looping positional noise (used for the angel's stone grinding).
+  // A looping positional noise.
   loop(freq, Q) {
     if (!this.ctx) return null;
     const ctx = this.ctx;

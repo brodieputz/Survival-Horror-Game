@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { TILE, WALL_H, PIT_DEPTH, T } from './config.js';
 import { tex } from './textures.js';
+import { macroVary } from './atmos.js';
 import { MinHeap } from './util.js';
 
 class QuadBatch {
@@ -93,14 +94,24 @@ export class World {
       floor: new QuadBatch(),
       ceil: new QuadBatch(),
       yard: new QuadBatch(),
-      facade: new QuadBatch(),
+      outside: new QuadBatch(),
       pit: new QuadBatch(),
     };
+    // rock outside the building's outline is open ground (lawns, verges)
+    const sh = d.shell;
+    const inShell = (x, y) => sh && x >= sh.x0 && x <= sh.x1 && y >= sh.y0 && y <= sh.y1;
     const isOpen = (x, y) => this.t(x, y) !== T.ROCK;
     for (let y = 0; y < this.H; y++)
       for (let x = 0; x < this.W; x++) {
         const t = this.t(x, y);
-        if (t === T.ROCK) continue;
+        if (t === T.ROCK) {
+          if (sh && !inShell(x, y)) {
+            const x0 = x * TILE;
+            const z0 = y * TILE;
+            batches.outside.quad([x0, 0, z0], [x0, 0, z0 + TILE], [x0 + TILE, 0, z0 + TILE], [x0 + TILE, 0, z0], [0, 1, 0]);
+          }
+          continue;
+        }
         const yard = t === T.YARD;
         const room = d.roomOf ? d.roomOf[y * this.W + x] : -1;
         const x0 = x * TILE;
@@ -111,7 +122,8 @@ export class World {
         const fb = yard ? batches.yard : t === T.PIT ? batches.pit : batches.floor;
         fb.quad([x0, fy, z0], [x0, fy, z1], [x1, fy, z1], [x1, fy, z0], [0, 1, 0]);
         if (!yard) batches.ceil.quad([x0, WALL_H, z0], [x1, WALL_H, z0], [x1, WALL_H, z1], [x0, WALL_H, z1], [0, -1, 0]);
-        const wb = yard ? batches.facade : room > 0 && room % 3 === 0 ? batches.wall2 : batches.wall;
+        if (yard) continue; // the lot is open: fences and the facade are props
+        const wb = room > 0 && room % 3 === 0 ? batches.wall2 : batches.wall;
         for (const [fx, fz] of [
           [1, 0],
           [-1, 0],
@@ -124,22 +136,22 @@ export class World {
             if (t === T.PIT && this.t(nx, ny) !== T.PIT) wallQuad(batches.pit, x, y, fx, fz, -PIT_DEPTH, 0);
             continue;
           }
-          wallQuad(wb, x, y, fx, fz, t === T.PIT ? -PIT_DEPTH : 0, yard ? WALL_H + 1.2 : WALL_H);
+          wallQuad(wb, x, y, fx, fz, t === T.PIT ? -PIT_DEPTH : 0, WALL_H);
         }
       }
 
-    const mk = (texture, color = 0xffffff) => {
+    const mk = (texture, color = 0xffffff, rough = 0.9) => {
       const t2 = texture.clone();
       t2.needsUpdate = true;
-      return new THREE.MeshLambertMaterial({ map: t2, color });
+      return new THREE.MeshStandardMaterial({ map: t2, color, roughness: rough, metalness: 0, shadowSide: THREE.DoubleSide });
     };
     const mats = {
       wall: mk(tex(theme.wall || 'brick', 1)),
       wall2: mk(tex(theme.wall2 || 'stoneBlocks', 2)),
       floor: mk(tex(theme.floor || 'floor', 3)),
       ceil: mk(tex(theme.ceil || 'ceiling', 4)),
-      yard: mk(tex(theme.yard || 'asphalt', 30)),
-      facade: mk(tex('brick', 7), 0xb8a898),
+      yard: macroVary(mk(tex(theme.yard || 'asphalt', 30)), 0.8),
+      outside: macroVary(mk(tex(theme.outside || 'grass', 31))),
       pit: mk(tex('stoneBlocks', 2), 0x664444),
     };
     this.materials = mats;
@@ -147,6 +159,8 @@ export class World {
       if (!batches[k].pos.length) continue;
       const mesh = new THREE.Mesh(batches[k].build(), mats[k]);
       mesh.receiveShadow = true;
+      // walls and ceilings keep the sun out of the interior
+      mesh.castShadow = k === 'wall' || k === 'wall2' || k === 'ceil';
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();
       this.group.add(mesh);

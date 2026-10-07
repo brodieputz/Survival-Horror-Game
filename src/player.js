@@ -152,6 +152,9 @@ export class Player {
     const sens = 0.0022 * input.sensitivity;
     this.yaw -= input.mouseDX * sens;
     this.pitch -= input.mouseDY * sens;
+    // how fast the view is turning, for weapon sway (rad/s)
+    this.turnX = dt > 0 ? (input.mouseDX * sens) / dt : 0;
+    this.turnY = dt > 0 ? (input.mouseDY * sens) / dt : 0;
     this.pitch = clamp(this.pitch, -1.45, 1.45);
 
     if (!this.alive) return;
@@ -251,6 +254,7 @@ export class Player {
       this.velY = 0;
       if (!this.onGround) {
         this.onGround = true;
+        if (impact < -2) this.landKick = Math.min(1, -impact / 9);
         if (ground < -1) this.landInPit();
         else if (impact < -4) {
           game.audio.playerStep(this.surface(), 1.2);
@@ -374,7 +378,7 @@ export class Player {
     if (inst.mag <= 0) {
       g.audio.click(0.6);
       this.fireCd = 0.3;
-      if ((this.run.ammo[def.ammo] || 0) > 0) this.startReload();
+      if (this.canReload(def)) this.startReload();
       else g.ui.message(`Out of ${AMMO[def.ammo].name.toLowerCase()}.`, 'dim');
       return;
     }
@@ -408,7 +412,7 @@ export class Player {
       }
     }
     if (def.noise) g.emitNoise(this.pos.x, this.pos.z, def.noise, 'gun');
-    if (inst.mag <= 0 && (this.run.ammo[def.ammo] || 0) > 0 && def.cat !== 'thrown') setTimeout(() => this.startReload(), 250);
+    if (inst.mag <= 0 && this.canReload(def) && def.cat !== 'thrown') setTimeout(() => this.startReload(), 250);
     if (def.cat === 'thrown' && inst.mag <= 0) this.startReload();
   }
 
@@ -441,12 +445,17 @@ export class Player {
     g.emitNoise(this.pos.x, this.pos.z, NOISE.melee, 'player');
   }
 
+  // Shared ammo pools: some weapons use more than one unit per round (molotovs).
+  canReload(def) {
+    return (this.run.ammo[def.ammo] || 0) >= (def.ammoPer || 1);
+  }
+
   startReload() {
     const def = this.weaponDef();
     const inst = this.weapon();
     if (!inst || def.cat === 'melee' || this.reloading > 0) return;
     const st = this.weaponStats();
-    if (inst.mag >= st.mag || (this.run.ammo[def.ammo] || 0) <= 0) return;
+    if (inst.mag >= st.mag || !this.canReload(def)) return;
     this.reloading = st.reload;
     this.reloadTotal = st.reload;
     if (def.cat !== 'thrown' && def.cat !== 'bow') this.game.audio.reload();
@@ -457,9 +466,10 @@ export class Player {
     if (!inst) return;
     const def = WEAPONS[inst.id];
     const st = this.weaponStats();
-    const n = Math.min(st.mag - inst.mag, this.run.ammo[def.ammo] || 0);
+    const per = def.ammoPer || 1;
+    const n = Math.min(st.mag - inst.mag, Math.floor((this.run.ammo[def.ammo] || 0) / per));
     inst.mag += n;
-    this.run.ammo[def.ammo] -= n;
+    this.run.ammo[def.ammo] -= n * per;
   }
 
   // ------------------------------------------------------------ hiding

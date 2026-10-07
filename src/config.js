@@ -15,8 +15,8 @@ export const T = {
 
 export const PLAYER = {
   radius: 0.35,
-  eye: 1.62,
-  crouchEye: 1.0,
+  eye: 1.68, // same eye line as survivors and zombies (1.8 m tall)
+  crouchEye: 1.05,
   walk: 3.4,
   run: 6.4,
   crouch: 1.7,

@@ -142,7 +142,7 @@ export class SurvivorActor {
     let best = null;
     let bs = Infinity;
     for (const e of lvl.enemies) {
-      if (!e.alive || e.type === 'angel') continue;
+      if (!e.alive) continue;
       if (filter && !filter(e)) continue;
       if (this.explosive && !this.safeBlast(e)) continue;
       const d = dist2D(this.pos.x, this.pos.z, e.pos.x, e.pos.z);

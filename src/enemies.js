@@ -1,27 +1,26 @@
 // Zombie AI. In buildings ("roam" mode) zombies patrol, hunt by sight or
-// sound and use the original Grunt / Blood Hound / Blind Brute / Angel
+// sound and use the original Grunt / Blood Hound / Blind Brute
 // behaviours. In the camp ("wave" mode) they march on the barricade, batter it
 // down, then go for the player and the survivors.
 import * as THREE from 'three';
-import { makeGrunt, makeBrute, makeHound, makeAngel, setAngelPose, glowSprite } from './models.js';
+import { makeGrunt, makeBrute, makeHound, glowSprite } from './models.js';
 import { makeZombie } from './actors.js';
 import { dampAngle, angleDiff, dist2D, mulberry32 } from './util.js';
 
 export const ZOMBIES = {
-  walker: { name: 'Walker', hp: 60, radius: 0.38, walk: 1.0, run: 2.2, wave: 2.0, sight: 0.85, fov: 2.0, stride: 1.2, dmg: 12, bdmg: 7, cd: 1.3, reach: 1.9, xp: 1 },
-  runner: { name: 'Runner', hp: 42, radius: 0.36, walk: 1.6, run: 5.4, wave: 5.4, sight: 1.0, fov: 2.2, stride: 1.5, dmg: 10, bdmg: 5, cd: 0.9, reach: 1.8, xp: 2 },
-  grunt: { name: 'Grunt', hp: 90, radius: 0.42, walk: 2.0, run: 5.4, wave: 3.0, sight: 1.0, fov: 2.1, stride: 1.4, dmg: 20, bdmg: 10, cd: 1.1, reach: 2.0, xp: 2 },
-  fat: { name: 'Bloater', hp: 230, radius: 0.6, walk: 0.9, run: 1.8, wave: 1.7, sight: 0.7, fov: 1.8, stride: 1.3, dmg: 24, bdmg: 16, cd: 1.6, reach: 2.1, xp: 4 },
-  rotter: { name: 'Rotter', hp: 270, radius: 0.42, walk: 0.8, run: 1.2, wave: 1.5, sight: 0.8, fov: 2.0, stride: 1.1, dmg: 20, bdmg: 12, cd: 1.4, reach: 2.0, xp: 4 },
-  armored: { name: 'Riot Zombie', hp: 170, radius: 0.44, walk: 1.4, run: 3.2, wave: 2.5, sight: 0.9, fov: 2.0, stride: 1.4, dmg: 18, bdmg: 11, cd: 1.2, reach: 2.0, armor: 0.55, xp: 5 },
-  crawler: { name: 'Crawler', hp: 35, radius: 0.35, walk: 1.2, run: 2.8, wave: 2.9, sight: 0.6, fov: 2.0, stride: 0.9, dmg: 8, bdmg: 4, cd: 0.9, reach: 1.5, xp: 1 },
-  hound: { name: 'Blood Hound', hp: 32, radius: 0.32, walk: 2.6, run: 5.9, wave: 6.6, sight: 1.25, fov: 2.4, stride: 0.55, dmg: 9, bdmg: 4, cd: 0.75, reach: 1.6, xp: 2 },
-  brute: { name: 'Blind Brute', hp: 650, radius: 0.75, walk: 1.6, run: 4.9, wave: 2.1, sight: 0, fov: 0, stride: 2.1, dmg: 42, bdmg: 45, cd: 1.7, reach: 2.4, xp: 15 },
-  angel: { name: 'Angel', hp: Infinity, radius: 0.4, walk: 0, run: 11.5, wave: 0, sight: 0, fov: 0, stride: 0, dmg: 0, bdmg: 0, cd: 1, reach: 1.15, xp: 0 },
+  walker: { name: 'Walker', hp: 60, radius: 0.38, walk: 1.0, run: 2.2, wave: 2.0, sight: 0.85, fov: 2.0, stride: 1.2, dmg: 12, bdmg: 9, cd: 1.3, reach: 1.9, xp: 1 },
+  runner: { name: 'Runner', hp: 42, radius: 0.36, walk: 1.6, run: 5.4, wave: 5.4, sight: 1.0, fov: 2.2, stride: 1.5, dmg: 10, bdmg: 6, cd: 0.9, reach: 1.8, xp: 2 },
+  grunt: { name: 'Grunt', hp: 90, radius: 0.42, walk: 2.0, run: 5.4, wave: 3.0, sight: 1.0, fov: 2.1, stride: 1.4, dmg: 20, bdmg: 12, cd: 1.1, reach: 2.0, xp: 2 },
+  fat: { name: 'Bloater', hp: 230, radius: 0.6, walk: 0.9, run: 1.8, wave: 1.7, sight: 0.7, fov: 1.8, stride: 1.3, dmg: 24, bdmg: 20, cd: 1.6, reach: 2.1, xp: 4 },
+  rotter: { name: 'Rotter', hp: 270, radius: 0.42, walk: 0.8, run: 1.2, wave: 1.5, sight: 0.8, fov: 2.0, stride: 1.1, dmg: 20, bdmg: 15, cd: 1.4, reach: 2.0, xp: 4 },
+  armored: { name: 'Riot Zombie', hp: 170, radius: 0.44, walk: 1.4, run: 3.2, wave: 2.5, sight: 0.9, fov: 2.0, stride: 1.4, dmg: 18, bdmg: 14, cd: 1.2, reach: 2.0, armor: 0.55, xp: 5 },
+  crawler: { name: 'Crawler', hp: 35, radius: 0.35, walk: 1.2, run: 2.8, wave: 2.9, sight: 0.6, fov: 2.0, stride: 0.9, dmg: 8, bdmg: 5, cd: 0.9, reach: 1.5, xp: 1 },
+  hound: { name: 'Blood Hound', hp: 32, radius: 0.32, walk: 2.6, run: 5.9, wave: 6.6, sight: 1.25, fov: 2.4, stride: 0.55, dmg: 9, bdmg: 5, cd: 0.75, reach: 1.6, xp: 2 },
+  brute: { name: 'Blind Brute', hp: 650, radius: 0.75, walk: 1.6, run: 4.9, wave: 2.1, sight: 0, fov: 0, stride: 2.1, dmg: 42, bdmg: 55, cd: 1.7, reach: 2.4, xp: 15 },
 };
 
 // Which of the original sound-sets each zombie uses.
-const VOICE = { walker: 'grunt', runner: 'grunt', grunt: 'grunt', fat: 'brute', rotter: 'grunt', armored: 'grunt', crawler: 'grunt', hound: 'hound', brute: 'brute', angel: 'angel' };
+const VOICE = { walker: 'grunt', runner: 'grunt', grunt: 'grunt', fat: 'brute', rotter: 'grunt', armored: 'grunt', crawler: 'grunt', hound: 'hound', brute: 'brute' };
 
 let seedCounter = 1;
 
@@ -46,7 +45,7 @@ export class Enemy {
     this.yaw = this.mode === 'wave' ? -Math.PI / 2 : Math.random() * Math.PI * 2;
     const rng = mulberry32(seedCounter++ * 7919);
     this.model =
-      type === 'grunt' ? makeGrunt() : type === 'brute' ? makeBrute() : type === 'hound' ? makeHound() : type === 'angel' ? makeAngel() : makeZombie(type, rng);
+      type === 'grunt' ? makeGrunt() : type === 'brute' ? makeBrute() : type === 'hound' ? makeHound() : makeZombie(type, rng);
     this.model.hipY = this.model.hipY ?? this.model.hips?.position.y ?? 0.95;
     this.root = this.model.root;
     this.root.traverse((o) => {
@@ -81,19 +80,12 @@ export class Enemy {
     this.jaw = 0;
     this.awake = false;
     this.observed = false;
-    this.wasMoving = false;
-    this.movedRecently = 0;
-    this.grind = null;
     this.flinch = 0;
     this.burn = 0;
     this.burnDps = 0;
     this.burnSrc = null;
     this.laneZ = z;
     this.gone = false;
-    if (type === 'angel') {
-      this.pose = Math.floor(Math.random() * 2);
-      setAngelPose(this.model, this.pose);
-    }
     this.syncModel(0);
   }
 
@@ -105,7 +97,6 @@ export class Enemy {
   get hunting() {
     if (!this.alive || this.stun > 0) return false;
     if (this.mode === 'wave') return true;
-    if (this.type === 'angel') return this.awake && this.movedRecently > 0;
     return ['chase', 'alert', 'pullout', 'shriek', 'charge', 'bark'].includes(this.state) || this.enraged > 0;
   }
 
@@ -184,7 +175,7 @@ export class Enemy {
   }
 
   hear(n) {
-    if (!this.alive || this.stun > 0 || this.type === 'angel' || this.mode === 'wave') return;
+    if (!this.alive || this.stun > 0 || this.mode === 'wave') return;
     if (this.state === 'fight') return;
     const mult = this.type === 'brute' ? (n.kind === 'glass' ? 2.0 : 1.5) : this.type === 'hound' ? 1.0 : 0.85;
     const d = dist2D(this.pos.x, this.pos.z, n.x, n.z);
@@ -211,7 +202,7 @@ export class Enemy {
 
   // Alerted by a hound's shriek. spot = hiding spot the hound has found.
   alerted(x, z, spot) {
-    if (!this.alive || this.type === 'angel' || this.stun > 0 || this.state === 'fight') return;
+    if (!this.alive || this.stun > 0 || this.state === 'fight') return;
     if (this.mode === 'wave') {
       this.frenzy = 7;
       return;
@@ -289,7 +280,7 @@ export class Enemy {
     world.collide(this.pos, this.radius, true);
     const moved = Math.hypot(this.pos.x - ox, this.pos.z - oz);
     this.speedNow = moved / Math.max(dt, 1e-4);
-    this.yaw = dampAngle(this.yaw, Math.atan2(nx, nz), this.type === 'angel' ? 30 : 8, dt);
+    this.yaw = dampAngle(this.yaw, Math.atan2(nx, nz), 8, dt);
     this.stepDist += moved;
   }
 
@@ -317,7 +308,7 @@ export class Enemy {
   // ------------------------------------------------------------ damage
   // src: the player, a survivor actor, or a string ('turret', 'trap', 'fire')
   hit(dmg, src = null, info = {}) {
-    if (!this.alive || this.type === 'angel') return;
+    if (!this.alive) return;
     if (this.s.armor && !info.head && !info.explosive && !info.fire) dmg *= 1 - this.s.armor;
     this.hp -= dmg;
     this.flinch = 1;
@@ -353,7 +344,7 @@ export class Enemy {
   }
 
   ignite(seconds, dps, src) {
-    if (!this.alive || this.type === 'angel') return;
+    if (!this.alive) return;
     this.burn = Math.max(this.burn, seconds);
     this.burnDps = Math.max(this.burnDps, dps);
     this.burnSrc = src;
@@ -377,13 +368,11 @@ export class Enemy {
       this.fightWith.fightWith = null;
       this.fightWith.setState('search');
     }
-    this.grind?.stop();
-    this.grind = null;
     g.onZombieKilled(this, src, info);
   }
 
   trap(seconds, dmg, src = 'trap') {
-    if (this.type === 'angel' || !this.alive) return false;
+    if (!this.alive) return false;
     this.stun = seconds;
     this.hit(dmg, src);
     if (this.alive) {
@@ -416,7 +405,6 @@ export class Enemy {
     this.shriekCd -= dt;
     this.enraged = Math.max(0, this.enraged - dt);
     this.frenzy = Math.max(0, this.frenzy - dt);
-    this.movedRecently = Math.max(0, this.movedRecently - dt);
     const g = this.game;
 
     if (this.state === 'dead') {
@@ -446,7 +434,6 @@ export class Enemy {
     }
 
     if (this.mode === 'wave') this.updateWave(dt);
-    else if (this.type === 'angel') this.updateAngel(dt);
     else if (this.type === 'brute') this.updateBrute(dt);
     else this.updateSighted(dt);
 
@@ -455,7 +442,7 @@ export class Enemy {
       this.stepDist = 0;
       if (this.dist() < 32) g.audio.monsterStep(this.voice, this.pos);
     }
-    if (this.vocalCd <= 0 && this.type !== 'angel') {
+    if (this.vocalCd <= 0) {
       this.vocalCd = (this.mode === 'wave' ? 7 : 5) + Math.random() * 9;
       if (this.dist() < 30) g.audio.growl(this.voice, this.pos, this.hunting ? 1 : 0.55);
     }
@@ -879,45 +866,6 @@ export class Enemy {
     }
   }
 
-  // Angel: moves only while unobserved. Only found inside buildings.
-  updateAngel(dt) {
-    const g = this.game;
-    const p = g.player;
-    const d = this.dist();
-    const world = g.level.world;
-    const exposed = p.alive && !p.hidden;
-    this.observed = g.isObserved(this);
-    if (!this.awake) {
-      if (exposed && d < 24 && world.los(this.pos.x, this.pos.z, p.pos.x, p.pos.z)) this.awake = true;
-    } else if (d > 42 || !p.alive) this.awake = false;
-
-    const shouldMove = this.awake && exposed && !this.observed;
-    if (!shouldMove) {
-      if (this.wasMoving && this.observed) {
-        this.pose = d < 10 ? 2 + Math.floor(Math.random() * 2) : Math.floor(Math.random() * 3);
-        setAngelPose(this.model, this.pose);
-      }
-      this.wasMoving = false;
-      this.speedNow = 0;
-      this.grind?.set(this.pos, 0);
-      return;
-    }
-    if (!this.wasMoving) {
-      this.pose = d < 10 ? 2 + Math.floor(Math.random() * 2) : Math.floor(Math.random() * 2);
-      setAngelPose(this.model, this.pose);
-    }
-    this.wasMoving = true;
-    this.movedRecently = 2.5;
-    if (!this.grind && g.audio.ctx) this.grind = g.audio.loop(240, 2.5);
-    this.grind?.set(this.pos, 1.0);
-    if (d < 1.15) {
-      g.killPlayer('angel', this);
-      return;
-    }
-    this.goTo(p.pos.x, p.pos.z, this.s.run, dt, 0.9);
-    this.yaw = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
-  }
-
   fadeOut(t) {
     if (!this.fadeMats) {
       // give this body its own transparent copies of its materials
@@ -953,7 +901,6 @@ export class Enemy {
     this.root.position.z = this.pos.z;
     this.root.position.y = 0;
     this.root.rotation.y = this.yaw;
-    if (this.type === 'angel') return;
     if (this.state === 'dead') {
       const t = Math.min(1, this.deadT / 0.7);
       const e = t * t;
@@ -1005,8 +952,5 @@ export class Enemy {
     if (m.quad) m.head.rotation.x = -this.jaw * 0.5;
   }
 
-  dispose() {
-    this.grind?.stop();
-    this.grind = null;
-  }
+  dispose() {}
 }

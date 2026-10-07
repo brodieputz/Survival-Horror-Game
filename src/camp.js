@@ -17,6 +17,7 @@ import { tex } from './textures.js';
 import * as M from './models.js';
 import * as P from './props.js';
 import { BIOMES, barricadeMax } from './run.js';
+import { macroVary, makeGrass, Smoke, WIND } from './atmos.js';
 
 export const CW = 52;
 export const CH = 17;
@@ -30,7 +31,7 @@ const SPAWN_X0 = 144;
 const SPAWN_X1 = 152;
 const Z_MIN = 3.6;
 const Z_MAX = CH * TILE - 3.6;
-const MAX_ALIVE = 42;
+const MAX_ALIVE = 50;
 
 export class CampScene {
   constructor(game) {
@@ -79,7 +80,7 @@ export class CampScene {
     const gtex = tex(b.ground).clone();
     gtex.needsUpdate = true;
     gtex.repeat.set(120, 120);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshLambertMaterial({ map: gtex }));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), macroVary(new THREE.MeshStandardMaterial({ map: gtex, roughness: 1 })));
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(80, 0, 25);
     ground.receiveShadow = true;
@@ -88,13 +89,32 @@ export class CampScene {
     const dtex = tex('dirt').clone();
     dtex.needsUpdate = true;
     dtex.repeat.set(8, 16);
-    const dirt = new THREE.Mesh(new THREE.PlaneGeometry(26, 48), new THREE.MeshLambertMaterial({ map: dtex, transparent: true, opacity: 0.85 }));
+    const dirt = new THREE.Mesh(new THREE.PlaneGeometry(26, 48), macroVary(new THREE.MeshStandardMaterial({ map: dtex, transparent: true, opacity: 0.85, roughness: 1 })));
     dirt.rotation.x = -Math.PI / 2;
     dirt.position.set(24, 0.01, 25.5);
     dirt.receiveShadow = true;
     this.group.add(dirt);
     const rr = () => this.rng.next();
     this.group.add(P.makeBackdrop(b.backdrop, rr, 80, 25, 230));
+    // grass: thick in the forest, dry clumps in the desert, a few stalks
+    // poking through the snow; trampled flat around the train and the camp
+    const G = { grass: [9000, 0x5a7a3a, 0.5], sand: [2200, 0xa89660, 0.38], snow: [700, 0xb4ac8c, 0.32] }[b.ground] || [4000, 0x5a7a3a, 0.45];
+    this.grass = makeGrass({
+      count: G[0],
+      color: G[1],
+      height: G[2],
+      x0: -12,
+      x1: 172,
+      z0: -24,
+      z1: CH * TILE + 24,
+      rng: rr,
+      place: (x, z) => {
+        if (x > 3 && x < 14) return false; // the tracks
+        if (x > 14 && x < BX + 1.5 && z > 2 && z < CH * TILE - 2) return rr() < 0.08; // camp
+        return true;
+      },
+    });
+    this.group.add(this.grass);
     // a treeline / boulder line just outside the playable edges
     for (let i = 0; i < 70; i++) {
       const side = i % 2 ? -1 : 1;
@@ -199,6 +219,8 @@ export class CampScene {
     fire.group.position.set(26, 0, 22);
     g.add(fire.group);
     this.fire = fire;
+    this.smoke = new Smoke(26, 0.9, 22);
+    this.group.add(this.smoke.group);
     this.world.addCollider(25.3, 21.3, 26.7, 22.7);
     this.lamps.push({ pos: new THREE.Vector3(26, 1.2, 22), phase: 0, color: 0xff8a30, power: 12, fire: true });
     // trap crate by the gate
@@ -278,15 +300,30 @@ export class CampScene {
     const rr = () => this.rng.next();
     const lvl = this.run.barricade.level;
     const up = this.barricadeUp;
-    for (let z0 = 1.5; z0 < CH * TILE - 1.5; z0 += SEG) {
-      const zc = z0 + SEG / 2;
-      const isGate = z0 === GATE_Z0;
-      const m = up ? P.makeBarricade(SEG, lvl, rr) : P.makeBarricadeRubble(SEG, rr);
+    // sections of about SEG metres either side of the gate in the middle
+    const segs = [];
+    const span = (a, b) => {
+      const n = Math.max(1, Math.round((b - a) / SEG));
+      for (let i = 0; i < n; i++) segs.push({ z0: a + (i * (b - a)) / n, w: (b - a) / n });
+    };
+    span(1.5, GATE_Z0);
+    segs.push({ z0: GATE_Z0, w: GATE_Z1 - GATE_Z0, gate: true });
+    span(GATE_Z1, CH * TILE - 1.5);
+    for (const { z0, w, gate } of segs) {
+      const zc = z0 + w / 2;
+      if (gate && up) {
+        const g = P.makeGate(w);
+        g.group.position.set(BX, 0, zc);
+        this.barGroup.add(g.group);
+        this.gate = g;
+        continue;
+      }
+      const m = up ? P.makeBarricade(w, lvl, rr) : P.makeBarricadeRubble(w, rr);
       m.position.set(BX, 0, zc);
       this.barGroup.add(m);
-      if (isGate) this.gateModel = m;
-      if (up && !isGate) this.barColliders.push(this.world.addCollider(BX - 0.5, z0, BX + 0.5, z0 + SEG));
+      if (up) this.barColliders.push(this.world.addCollider(BX - 0.5, z0, BX + 0.5, z0 + w));
     }
+    if (!up) this.gate = null;
     this.gateCollider = null;
     this.setGate(this.game.run.phase !== 'night');
     // lanterns
@@ -304,13 +341,10 @@ export class CampScene {
     this.lastHp = this.run.barricade.hp;
   }
 
-  setGate(open) {
+  setGate(open, instant = true) {
     this.gateOpen = open && this.barricadeUp;
-    if (this.gateModel && this.barricadeUp) {
-      // swings inward like a door hinged on the north post
-      this.gateModel.rotation.y = open ? Math.PI / 2 : 0;
-      this.gateModel.position.set(open ? BX - SEG / 2 - 0.3 : BX, 0, open ? GATE_Z1 + 0.2 : GATE_Z0 + SEG / 2);
-    }
+    this.gateT = this.gateOpen ? 1 : 0;
+    if (instant) this.gateAnim = this.gateT;
     if (this.gateCollider) {
       this.world.removeCollider(this.gateCollider);
       this.gateCollider = null;
@@ -448,7 +482,9 @@ export class CampScene {
     this.run.placedTraps = this.run.placedTraps.filter((t) => t !== rt.rec);
   }
 
-  canPlaceTrap(type, x, z) {
+  canPlaceTrap(type, x, z, px, pz) {
+    if (px < BX + 1.0) return 'Head out through the gate to set traps.';
+    if (Math.hypot(x - px, z - pz) > 4.5) return 'Too far away. Walk closer.';
     if (x < BX + 2.5 || x > 140 || z < Z_MIN || z > Z_MAX) return 'Traps go beyond the barricade.';
     if (type === 'tripwire' && (z - 3 < Z_MIN - 1.5 || z + 3 > Z_MAX + 1.5)) return 'Not enough room for the wire.';
     for (const t of this.traps) if (t.armed && dist2D(t.rec.x, t.rec.z, x, z) < (type === 'tripwire' || t.rec.type === 'tripwire' ? 2.2 : 1.3)) return 'Too close to another trap.';
@@ -515,7 +551,7 @@ export class CampScene {
       if (!t.armed) continue;
       if (t.rec.type === 'mine') t.light.material.opacity = Math.sin(g.time * 6) > 0 ? 0.9 : 0.2;
       for (const e of this.enemies) {
-        if (!e.alive || e.type === 'angel') continue;
+        if (!e.alive) continue;
         const dx = e.pos.x - t.rec.x;
         const dz = e.pos.z - t.rec.z;
         if (t.rec.type === 'bear') {
@@ -688,13 +724,14 @@ export class CampScene {
     const alive = this.enemies.filter((e) => e.alive).length;
     w.nextT -= dt;
     if (w.spawned < w.total && w.nextT <= 0 && alive < MAX_ALIVE) {
-      const group = Math.min(w.total - w.spawned, 1 + Math.floor(Math.random() * Math.min(5, 1 + w.wave / 2)));
-      const zc = this.rng.range(Z_MIN + 3, Z_MAX - 3);
+      const group = Math.min(w.total - w.spawned, 2 + Math.floor(Math.random() * Math.min(6, 1 + w.wave / 2)));
+      const zc = w.firstZ ?? this.rng.range(Z_MIN + 3, Z_MAX - 3);
+      w.firstZ = null; // the opening shot frames the first group
       for (let i = 0; i < group; i++) {
         const type = w.list[w.spawned++];
         this.spawnZombie(type, this.rng.range(SPAWN_X0, SPAWN_X1), clamp(zc + this.rng.range(-5, 5), Z_MIN, Z_MAX), { hp: w.hpMul, spd: w.spdMul, dmg: w.dmgMul });
       }
-      w.nextT = Math.max(0.5, 2.6 - w.wave * 0.12) * (0.6 + Math.random() * 0.8);
+      w.nextT = Math.max(0.35, 2.2 - w.wave * 0.15) * (0.6 + Math.random() * 0.8);
     }
     if (w.spawned >= w.total && alive === 0) {
       w.active = false;
@@ -735,8 +772,9 @@ export class CampScene {
     const day = g.run.phase !== 'night';
     out.push({ type: 'tent', x: this.tent.x, z: this.tent.z, label: g.run.phase === 'day' ? 'Sleep (ends the day)' : 'Sleep', range: 2.6 });
     out.push({ type: 'maptable', x: this.table.x, z: this.table.z, label: 'Study the maps', range: 2.3 });
+    if (g.run.phase === 'day') out.push({ type: 'campfire', x: 26, z: 22, label: 'Rest by the fire (pass time)', range: 2.4 });
     out.push({ type: 'rack', x: this.rack.x, z: this.rack.z, label: 'Weapon rack & workbench', range: 2.4 });
-    if (day) out.push({ type: 'trapcrate', x: this.trapCrate.x, z: this.trapCrate.z, label: 'Set traps beyond the barricade', range: 2.2 });
+    if (day) out.push({ type: 'trapcrate', x: this.trapCrate.x, z: this.trapCrate.z, label: 'Take traps (then head out through the gate)', range: 2.2 });
     const p = g.player;
     if (p.pos.x < BX + 2.5) {
       const bz = clamp(p.pos.z, 2, CH * TILE - 2);
@@ -769,7 +807,17 @@ export class CampScene {
     for (const f of this.fire.flames) f.scale.set(0.6 * (0.85 + Math.random() * 0.3), 1.0 * (0.85 + Math.random() * 0.3), 1);
     this.fire.glow.material.opacity = 0.45 + Math.random() * 0.1;
     for (const l of this.lanterns) l.glow.material.opacity = 0.75 + Math.sin(t * 5 + l.group.position.z) * 0.08;
+    if (this.gate) {
+      const target = this.gateT ?? 0;
+      this.gateAnim = (this.gateAnim ?? target) + Math.sign(target - (this.gateAnim ?? target)) * Math.min(Math.abs(target - (this.gateAnim ?? target)), dt * 0.8);
+      const a = this.gateAnim * (Math.PI / 2) * 0.96;
+      this.gate.left.rotation.y = -a;
+      this.gate.right.rotation.y = a;
+    }
     this.weather.update(dt, g.camera.position);
+    WIND.value += dt;
+    this.smokeTint = (this.smokeTint || new THREE.Color()).copy(g.hemi.color).multiplyScalar(Math.min(1, g.hemi.intensity * 0.55));
+    this.smoke.update(dt, this.smokeTint);
   }
 
   separate() {
@@ -826,18 +874,27 @@ export class CampScene {
 }
 
 // ---------------------------------------------------------------- weather
+// Rain falls as short streaks; snow and dust drift as soft round flakes.
+// Both take their brightness from the ambient light so they don't glow at night.
 const WN = 900;
 class Weather {
   constructor(game, kind) {
     this.kind = kind;
+    this.game = game;
     this.pos = new Float32Array(WN * 3);
     this.vel = new Float32Array(WN * 3);
     for (let i = 0; i < WN; i++) this.reset(i, 0, 0, 0, true);
+    this.base = new THREE.Color(kind === 'rain' ? 0xa8b4c4 : kind === 'snow' ? 0xf4f8ff : 0xc8a878);
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
-    const color = kind === 'rain' ? 0x8a9aaa : kind === 'snow' ? 0xf0f4ff : 0xc8a878;
-    const size = kind === 'rain' ? 0.06 : kind === 'snow' ? 0.11 : 0.07;
-    this.points = new THREE.Points(g, new THREE.PointsMaterial({ color, size, transparent: true, opacity: kind === 'dust' ? 0.5 : 0.75, depthWrite: false }));
+    if (kind === 'rain') {
+      this.line = new Float32Array(WN * 6);
+      g.setAttribute('position', new THREE.BufferAttribute(this.line, 3));
+      this.points = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: this.base, transparent: true, opacity: 0.32, depthWrite: false }));
+    } else {
+      g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+      const size = kind === 'snow' ? 0.16 : 0.1;
+      this.points = new THREE.Points(g, new THREE.PointsMaterial({ color: this.base, map: tex('glow'), size, transparent: true, opacity: kind === 'dust' ? 0.45 : 0.85, depthWrite: false }));
+    }
     this.points.frustumCulled = false;
     this.geo = g;
   }
@@ -874,6 +931,20 @@ class Weather {
       const dz = p[i * 3 + 2] - cam.z;
       if (p[i * 3 + 1] < 0 || dx * dx + dz * dz > 450 || (this.kind === 'dust' && p[i * 3 + 1] > 7)) this.reset(i, cam.x, cam.y, cam.z, false);
     }
+    if (this.line) {
+      const l = this.line;
+      for (let i = 0; i < WN; i++) {
+        const k = i * 6;
+        l[k] = p[i * 3];
+        l[k + 1] = p[i * 3 + 1];
+        l[k + 2] = p[i * 3 + 2];
+        l[k + 3] = p[i * 3] - v[i * 3] * 0.03;
+        l[k + 4] = p[i * 3 + 1] - v[i * 3 + 1] * 0.03;
+        l[k + 5] = p[i * 3 + 2] - v[i * 3 + 2] * 0.03;
+      }
+    }
     this.geo.attributes.position.needsUpdate = true;
+    const h = this.game.hemi;
+    this.points.material.color.copy(this.base).multiplyScalar(Math.min(1, 0.25 + h.intensity * 0.5));
   }
 }

@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { tex } from './textures.js';
 import { box, pivot, glowSprite, lambert as L, basic as B, mergeStatic } from './models.js';
 
+export const BARRICADE_H = 1.08; // three boards high
+
 const cyl = (r0, r1, h, mat, x = 0, y = 0, z = 0, seg = 8) => {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, seg), mat);
   m.position.set(x, y, z);
@@ -251,12 +253,12 @@ export function makeBarricade(len, level, rng) {
   const dark = L({ color: 0x2a1c12 });
   const metal = L({ map: tex('sheetMetal') });
   const bag = L({ color: 0x8a7a56 });
-  const h = 1.5 + Math.min(level, 6) * 0.08;
+  const h = BARRICADE_H + Math.min(level, 6) * 0.06;
   // posts
-  for (let z = -len / 2; z <= len / 2 + 0.01; z += 2.2) g.add(box(0.22, h + 0.4, 0.22, dark, 0, (h + 0.4) / 2, z));
-  // planks
-  for (let i = 0; i < 4; i++) {
-    const p = box(0.12, 0.28, len, wood, 0.15, 0.25 + i * (h / 4), 0);
+  for (let z = -len / 2; z <= len / 2 + 0.01; z += 2.2) g.add(box(0.22, h + 0.3, 0.22, dark, 0, (h + 0.3) / 2, z));
+  // three planks
+  for (let i = 0; i < 3; i++) {
+    const p = box(0.12, 0.28, len, wood, 0.15, 0.22 + i * (h / 3), 0);
     p.rotation.x = (rng() - 0.5) * 0.05;
     g.add(p);
   }
@@ -267,9 +269,56 @@ export function makeBarricade(len, level, rng) {
     g.add(s);
   }
   if (level >= 2) for (let z = -len / 2 + 0.5; z < len / 2; z += 1.0) g.add(box(0.5, 0.35, 0.95, bag, -0.3, 0.17, z));
-  if (level >= 4) g.add(box(0.06, h * 0.8, len, metal, 0.24, h * 0.45, 0));
+  if (level >= 4) g.add(box(0.06, h * 0.85, len, metal, 0.24, h * 0.45, 0));
   if (level >= 6) for (let z = -len / 2 + 0.5; z < len / 2; z += 1.0) g.add(box(0.5, 0.35, 0.95, bag, -0.3, 0.52, z));
   return mergeStatic(g);
+}
+
+// The camp gate: two tall posts with a sign, and two plank leaves that swing
+// inward. Leaves are hinged on the posts; rotate leftLeaf to -PI/2 and
+// rightLeaf to +PI/2 to open.
+export function makeGate(width) {
+  const g = new THREE.Group();
+  const wood = L({ map: tex('wood', 5) });
+  const dark = L({ color: 0x2a1c12 });
+  const iron = L({ color: 0x2c2c2e, metalness: 0.6, roughness: 0.5 });
+  for (const s of [-1, 1]) {
+    g.add(box(0.3, 3.0, 0.3, dark, 0, 1.5, (s * width) / 2));
+    g.add(box(0.5, 0.5, 0.5, dark, 0, 0.25, (s * width) / 2));
+  }
+  g.add(box(0.26, 0.26, width + 0.6, dark, 0, 2.9, 0));
+  // painted sign over the gate
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#4a3420';
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.fillStyle = '#d8c8a0';
+  ctx.font = 'bold 38px serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('GATE', 128, 46);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  for (const s of [1, -1]) {
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.45), L({ map: t }));
+    sign.position.set(s * 0.16, 2.55, 0);
+    sign.rotation.y = (s * Math.PI) / 2;
+    g.add(sign);
+  }
+  const leaf = (side) => {
+    const hinge = pivot(g, 0, 0, (side * width) / 2);
+    const lw = width / 2 - 0.12;
+    const dir = -side; // leaves extend toward the middle
+    for (let i = 0; i < 3; i++) hinge.add(box(0.1, 0.28, lw, wood, 0, 0.3 + i * 0.36, (dir * lw) / 2 + dir * 0.06));
+    const brace = box(0.08, 0.16, Math.hypot(lw, 0.8), wood, 0.04, 0.66, (dir * lw) / 2 + dir * 0.06);
+    brace.rotation.x = dir * Math.atan2(0.8, lw);
+    hinge.add(brace);
+    hinge.add(box(0.12, 0.08, 0.3, iron, 0.02, 0.4, dir * 0.15));
+    hinge.add(box(0.12, 0.08, 0.3, iron, 0.02, 1.0, dir * 0.15));
+    return hinge;
+  };
+  return { group: g, left: leaf(-1), right: leaf(1) };
 }
 
 export function makeBarricadeRubble(len, rng) {

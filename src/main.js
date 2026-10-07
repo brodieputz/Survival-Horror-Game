@@ -10,6 +10,9 @@ import { Particles } from './fx.js';
 import { Combat } from './combat.js';
 import { Enemy } from './enemies.js';
 import { makeViewModel, makeFistsViewModel, makeGunModel } from './gunModels.js';
+import { Environment } from './env.js';
+import { Pipeline, QUALITY } from './render.js';
+import { setAnisotropy } from './textures.js';
 import { makeBearTrap } from './models.js';
 import { makeMine, makeTripSpikes, makeKeroseneTank } from './props.js';
 import { DAY_HOURS, TRAVEL_HOURS, BARRICADE, TURRETS, TRAPS, TRAP_ORDER } from './config.js';
@@ -18,36 +21,36 @@ import * as R from './run.js';
 import { damp, dist2D, clamp } from './util.js';
 
 const SETTINGS_KEY = 'dreaddepths.settings';
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const lookTmp = new THREE.Vector3();
 const SPAWNS = {
   tent: { x: 21.5, z: 9.5, yaw: -Math.PI / 2 },
   table: { x: 22.6, z: 31.5, yaw: -Math.PI / 2 },
   night: { x: 31, z: 25.5, yaw: -Math.PI / 2 },
 };
 
-function mixPal(a, b, f) {
-  const c = (x, y) => new THREE.Color(x).lerp(new THREE.Color(y), f).getHex();
-  const n = (x, y) => x + (y - x) * f;
-  return { sky: c(a.sky, b.sky), fog: c(a.fog, b.fog), hemiS: c(a.hemiS, b.hemiS), hemiG: c(a.hemiG, b.hemiG), sun: c(a.sun, b.sun), sunI: n(a.sunI, b.sunI), hemiI: n(a.hemiI, b.hemiI), fogD: n(a.fogD, b.fogD) };
-}
-
 class Game {
   constructor() {
     this.canvas = document.getElementById('game');
-    this.settings = { sens: 1, master: 0.85, music: 0.7, sfx: 1, retro: true };
+    this.settings = { sens: 1, master: 0.85, music: 0.7, sfx: 1, quality: 'cinematic' };
     try {
-      Object.assign(this.settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'));
+      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+      delete saved.retro; // replaced by the quality setting
+      Object.assign(this.settings, saved);
     } catch (e) {
       /* ignore corrupt settings */
     }
+    if (!QUALITY[this.settings.quality]) this.settings.quality = 'cinematic';
 
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'high-performance' }));
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
     r.outputColorSpace = THREE.SRGBColorSpace;
+    r.toneMapping = THREE.ACESFilmicToneMapping;
+    r.toneMappingExposure = 1;
+    setAnisotropy(Math.min(8, r.capabilities.getMaxAnisotropy()));
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x000000);
-    this.scene.fog = new THREE.FogExp2(0x000000, 0.058);
-    this.camera = new THREE.PerspectiveCamera(72, 1, 0.05, 320);
+    this.camera = new THREE.PerspectiveCamera(72, 1, 0.05, 420);
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
 
@@ -55,11 +58,10 @@ class Game {
     this.scene.add(this.hemi);
     const sun = (this.sun = new THREE.DirectionalLight(0xffffff, 1));
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 60, bottom: -60, near: 1, far: 420 });
-    sun.shadow.bias = -0.0006;
     this.scene.add(sun, sun.target);
-    const fl = (this.flashlight = new THREE.SpotLight(0xfff0d2, 90, 32, 0.46, 0.5, 1.35));
+    this.env = new Environment(this);
+    this.pipeline = new Pipeline(r, this.scene, this.camera);
+    const fl = (this.flashlight = new THREE.SpotLight(0xfff0d2, 65, 32, 0.46, 0.5, 1.35));
     fl.position.set(-0.22, -0.22, -0.7);
     fl.target.position.set(0.0, -0.15, -8);
     fl.castShadow = true;
@@ -67,6 +69,8 @@ class Game {
     fl.shadow.camera.near = 0.3;
     fl.shadow.camera.far = 30;
     fl.shadow.bias = -0.0008;
+    fl.shadow.normalBias = 0.02;
+    fl.shadow.radius = 2.5;
     this.camera.add(fl);
     this.camera.add(fl.target);
     this.torchLights = [];
@@ -95,9 +99,6 @@ class Game {
     this.level = null;
     this.placing = null;
     this.trip = null;
-    this.frustum = new THREE.Frustum();
-    this.projM = new THREE.Matrix4();
-    this.sphere = new THREE.Sphere();
     this.chaseHold = 0;
     this.heartCd = 0;
     this.lightFlicker = 0;
@@ -146,10 +147,14 @@ class Game {
     this.camera.updateProjectionMatrix();
   }
   applyResolution() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.renderer.setPixelRatio(this.settings.retro ? 0.5 : Math.min(dpr, 1.5));
-    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-    this.canvas.classList.toggle('retro', !!this.settings.retro);
+    const q = this.settings.quality;
+    if (this.pipeline.quality !== q) {
+      this.pipeline.setQuality(q);
+      this.env.setQuality(q);
+    }
+    this.pipeline.setSize(window.innerWidth, window.innerHeight);
+    this.canvas.classList.toggle('retro', q === 'retro');
+    document.body.classList.toggle('post', !!QUALITY[q].post);
   }
   saveSettings() {
     try {
@@ -224,6 +229,10 @@ class Game {
 
   disposeLevel() {
     this.stopPlacing();
+    if (this.cine) {
+      this.cine = null;
+      document.body.classList.remove('cine');
+    }
     if (this.level) {
       this.level.dispose();
       this.level = null;
@@ -264,6 +273,7 @@ class Game {
       this.ui.banner(loc.name.toUpperCase(), `${L.name} · danger ${'☠'.repeat(loc.difficulty)}`, 3.5);
       this.audio.setMode('explore');
       this.input.lock();
+      this.playShot(this.arrivalShot());
     });
   }
 
@@ -306,6 +316,32 @@ class Game {
     return lines;
   }
 
+  // Sit by the campfire and let the daylight slip away.
+  passTime(hours) {
+    const run = this.run;
+    if (run.phase !== 'day' || this.level?.kind !== 'camp') return;
+    hours = Math.min(hours, run.hours);
+    if (hours <= 0) return;
+    this.closePanel(false);
+    this.transition(
+      () => {
+        run.hours -= hours;
+        this.setEnvironment();
+        if (run.hours <= 0) {
+          const lines = this.startDusk();
+          R.saveRun(run);
+          this.openPanel('report', lines, 'DUSK');
+          return;
+        }
+        R.saveRun(run);
+        this.ui.message(`${hours} ${hours === 1 ? 'hour passes' : 'hours pass'} by the fire.`, 'dim', 4);
+        this.input.lock();
+      },
+      0.7,
+      1.0
+    );
+  }
+
   requestSleep() {
     const run = this.run;
     if (run.phase === 'day' && run.hours > 0) this.openPanel('sleep');
@@ -339,6 +375,11 @@ class Game {
           this.audio.horn();
           this.audio.setMode('chase');
           this.input.lock();
+          // open on the horde stumbling out of the dark
+          const z = 12 + Math.random() * 26;
+          camp.wave.nextT = 0.3;
+          camp.wave.firstZ = z;
+          this.playShot({ dur: 5.5, from: V(131, 1.0, z - 2.5), to: V(124, 1.6, z), lookFrom: V(150, 1.7, z + 1.5), lookTo: V(150, 1.2, z + 0.5) });
           return true;
         }
         run.stats.quietNights++;
@@ -378,6 +419,8 @@ class Game {
         run.day++;
         run.hours = DAY_HOURS;
         run.phase = 'day';
+        const meal = R.dailyRations(run);
+        lines.push(...meal.lines);
         camp.clearNight();
         camp.spawnSurvivors();
         camp.setGate(true);
@@ -390,6 +433,10 @@ class Game {
         this.audio.dawn();
         lines.push({ kind: 'gold', text: `Tonight's chance of an attack: ${Math.round(R.waveChance(run) * 100)}%.` });
         this.nightReport = null;
+        if (meal.playerDied) {
+          setTimeout(() => this.playerDied('starvation'), 300);
+          return;
+        }
         R.saveRun(run);
         this.ui.banner(`DAY ${run.day}`, `${run.locality.name}`, 3);
         this.openPanel('report', lines, `DAWN — DAY ${run.day}`);
@@ -416,6 +463,15 @@ class Game {
         this.ui.banner(run.locality.name.toUpperCase(), R.BIOMES[run.locality.biome].name, 3.5);
         R.saveRun(run);
         this.input.lock();
+        // a wide look at the train in its new surroundings
+        this.playShot({
+          dur: 5,
+          from: V(66, 8, 66),
+          to: V(50, 4.5, 50),
+          lookFrom: V(16, 2.5, 26),
+          lookTo: V(20, 2, 24),
+          onEnd: () => lines.forEach((l, i) => this.ui.message(l.text, l.kind || '', 5 + i)),
+        });
       },
       1.8,
       2.0
@@ -658,6 +714,9 @@ class Game {
       case 'sleepyes':
         this.sleep();
         return;
+      case 'wait':
+        this.passTime(ds.h === 'dusk' ? this.run.hours : +ds.h);
+        return;
     }
     if (this.ui.panel) this.ui.renderPanel();
   }
@@ -674,7 +733,7 @@ class Game {
     }
     this.placing = { type, error: null, ok: false };
     this.makeGhost();
-    this.ui.message('Aim at the ground beyond the barricade and click to set a trap.', 'dim', 4);
+    this.ui.message(this.player.pos.x < this.level.bx + 1 ? 'Walk out through the gate, then aim at the ground near you and click to set a trap.' : 'Aim at the ground near you and click to set a trap.', 'dim', 5);
   }
 
   makeGhost() {
@@ -717,11 +776,11 @@ class Game {
     if (d.y > -0.03) pl.error = 'Aim at the ground.';
     else {
       const t = -o.y / d.y;
-      if (t > 40) pl.error = 'Too far away.';
+
       x = o.x + d.x * t;
       z = o.z + d.z * t;
     }
-    if (!pl.error) pl.error = this.level.canPlaceTrap(pl.type, x, z);
+    if (!pl.error) pl.error = this.level.canPlaceTrap(pl.type, x, z, this.player.pos.x, this.player.pos.z);
     if (!pl.error && run.traps[pl.type] <= 0) pl.error = `No ${TRAPS[pl.type].name.toLowerCase()}s left.`;
     this.ghost.visible = d.y < -0.03;
     this.ghost.position.set(x, 0, z);
@@ -760,7 +819,7 @@ class Game {
 
   onPlayerHide(spot) {
     for (const e of this.level.enemies) {
-      if (!e.alive || e.type === 'angel' || e.stun > 0 || e.mode === 'wave') continue;
+      if (!e.alive || e.stun > 0 || e.mode === 'wave') continue;
       let knows = false;
       if (e.type === 'hound') knows = e.canSee(true) || (['chase', 'alert', 'shriek', 'bark'].includes(e.state) && e.dist() < 40);
       else if (e.type === 'brute') knows = (e.state === 'charge' || e.enraged > 0) && e.dist() < 9;
@@ -784,13 +843,6 @@ class Game {
     p.invuln = 0.9;
     this.audio.growl(enemy.voice, enemy.pos, 1.4);
     if (p.alive) this.ui.message('It saw you hide. You are dragged out!', 'bad');
-  }
-
-  killPlayer(cause) {
-    const p = this.player;
-    if (!p.alive) return;
-    p.invuln = 0;
-    p.damage(9999, cause);
   }
 
   onZombieKilled(e, src, info) {
@@ -817,7 +869,7 @@ class Game {
       }
     }
     // explosions can leave the legless still crawling
-    if (info.explosive && !info.noCrawler && !['crawler', 'hound', 'brute', 'angel'].includes(e.type) && Math.random() < 0.3) {
+    if (info.explosive && !info.noCrawler && !['crawler', 'hound', 'brute'].includes(e.type) && Math.random() < 0.3) {
       const x = e.pos.x;
       const z = e.pos.z;
       setTimeout(() => {
@@ -846,7 +898,6 @@ class Game {
     this.stopPlacing();
     this.state = 'dying';
     this.deathCause = cause;
-    if (cause === 'angel') this.audio.stinger();
     this.audio.death();
     this.audio.setMode('dead');
     this.ui.toggleMap(false);
@@ -867,29 +918,6 @@ class Game {
     this.ui.showGameOver({ nights, waves: run.stats.waves, kills: run.stats.kills, searched: run.stats.searched, localities: run.stats.localities, recruited: run.stats.recruited, lost: run.stats.lost, level: run.player.level, best });
   }
 
-  // Is the angel visible to the player right now?
-  isObserved(e) {
-    const p = this.player;
-    if (!p.alive || p.hidden) return false;
-    const cam = this.camera;
-    const d = dist2D(e.pos.x, e.pos.z, cam.position.x, cam.position.z);
-    if (d > 36) return false;
-    if (!p.flashlight && d > 5 && !this.nearTorch(e.pos)) return false;
-    this.projM.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
-    this.frustum.setFromProjectionMatrix(this.projM);
-    this.sphere.center.set(e.pos.x, 1.0, e.pos.z);
-    this.sphere.radius = 0.7;
-    if (!this.frustum.intersectsSphere(this.sphere)) return false;
-    const w = this.level.world;
-    const rx = Math.cos(p.yaw) * 0.32;
-    const rz = -Math.sin(p.yaw) * 0.32;
-    return w.los(cam.position.x, cam.position.z, e.pos.x, e.pos.z) || w.los(cam.position.x, cam.position.z, e.pos.x + rx, e.pos.z + rz) || w.los(cam.position.x, cam.position.z, e.pos.x - rx, e.pos.z - rz);
-  }
-  nearTorch(pos) {
-    for (const l of this.torchLights) if (l.userData.on && dist2D(l.position.x, l.position.z, pos.x, pos.z) < 5) return true;
-    return false;
-  }
-
   anyHunting() {
     const p = this.player;
     return this.level.enemies.some((e) => e.hunting && dist2D(e.pos.x, e.pos.z, p.pos.x, p.pos.z) < 45);
@@ -897,39 +925,8 @@ class Game {
 
   // ------------------------------------------------------------ environment
   setEnvironment() {
-    const lvl = this.level;
-    const run = this.run;
-    const b = R.BIOMES[run.locality.biome];
-    const sun = this.sun;
-    if (lvl.kind === 'camp') {
-      let pal;
-      if (run.phase === 'night') pal = b.tod.night;
-      else if (run.phase === 'dusk') pal = b.tod.dusk;
-      else pal = mixPal(b.tod.day, b.tod.dusk, clamp((4 - run.hours) / 4, 0, 1) * 0.8);
-      this.scene.background = new THREE.Color(pal.sky);
-      this.scene.fog = new THREE.FogExp2(pal.fog, pal.fogD);
-      this.hemi.color.setHex(pal.hemiS);
-      this.hemi.groundColor.setHex(pal.hemiG);
-      this.hemi.intensity = pal.hemiI;
-      sun.visible = true;
-      sun.color.setHex(pal.sun);
-      sun.intensity = pal.sunI;
-      const low = run.phase === 'dusk' ? 0.3 : run.phase === 'night' ? 0.8 : clamp(run.hours / DAY_HOURS, 0.35, 1);
-      sun.position.set(80 - 70 * (1 - low), 40 + 60 * low, 25 - 60);
-      sun.target.position.set(80, 0, 25);
-      sun.castShadow = run.phase !== 'night';
-      this.camera.far = 330;
-    } else {
-      this.scene.background = new THREE.Color(b.tod.day.sky);
-      this.scene.fog = new THREE.FogExp2(0x000000, 0.055);
-      this.hemi.color.setHex(0x45455e);
-      this.hemi.groundColor.setHex(0x1a100c);
-      this.hemi.intensity = 0.85;
-      sun.visible = false;
-      sun.castShadow = false;
-      this.camera.far = 90;
-    }
-    this.camera.updateProjectionMatrix();
+    if (!this.level || !this.run) return;
+    this.env.refresh();
   }
 
   // ------------------------------------------------------------ main loop
@@ -938,7 +935,8 @@ class Game {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.step(dt);
-    this.renderer.render(this.scene, this.camera);
+    if (this.level) this.env.update(dt);
+    this.pipeline.render(dt, this.time);
     this.input.endFrame();
   }
 
@@ -947,7 +945,8 @@ class Game {
     this.time += dt;
     if (s === 'playing' || s === 'dying') {
       const p = this.player;
-      if (s === 'playing') {
+      if (s === 'playing' && this.cine) this.ui.setPrompt('');
+      else if (s === 'playing') {
         p.update(dt, this.input);
         if (this.placing) this.updatePlacing();
         else {
@@ -964,7 +963,8 @@ class Game {
         this.dawnT -= dt;
         if (this.dawnT <= 0 && this.state === 'playing') this.morning();
       }
-      this.updateCamera(dt);
+      if (this.cine) this.updateCine(dt);
+      else this.updateCamera(dt);
       this.camera.updateMatrixWorld();
       this.level.update(dt);
       this.combat.update(dt);
@@ -1042,6 +1042,9 @@ class Game {
       case 'tent':
         this.requestSleep();
         break;
+      case 'campfire':
+        this.openPanel('wait');
+        break;
       case 'maptable':
         this.openPanel('map', 'local');
         break;
@@ -1068,6 +1071,58 @@ class Game {
     }
   }
 
+  // ------------------------------------------------------------ cut-scenes
+  // A short letterboxed camera move. The world keeps running while the player
+  // waits; any key or a click skips it.
+  playShot(shot) {
+    this.cine = { t: 0, ...shot };
+    document.body.classList.add('cine');
+    if (this.vm) this.vm.group.visible = false;
+  }
+
+  endShot() {
+    const c = this.cine;
+    if (!c) return;
+    this.cine = null;
+    document.body.classList.remove('cine');
+    this.updateCamera(0);
+    c.onEnd?.();
+  }
+
+  // The camera sweeps down from a wide view of the building to the player.
+  arrivalShot() {
+    const lvl = this.level;
+    const d = lvl.d;
+    const p = this.player;
+    const eye = V(p.pos.x, p.pos.y + p.eyeH, p.pos.z);
+    const front = d.front * 3;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    return {
+      dur: 3.6,
+      from: V(eye.x + side * 11, 11, eye.z + 13),
+      to: eye,
+      lookFrom: V(eye.x - side * 2, 4.5, front),
+      lookTo: V(eye.x, eye.y, eye.z - 10),
+    };
+  }
+
+  updateCine(dt) {
+    const c = this.cine;
+    c.t += dt;
+    const k = Math.min(1, c.t / c.dur);
+    const e = 0.5 - Math.cos(Math.PI * k) / 2;
+    const cam = this.camera;
+    cam.position.lerpVectors(c.from, c.to, e);
+    cam.lookAt(lookTmp.lerpVectors(c.lookFrom, c.lookTo, e));
+    if (cam.fov !== 60 + 12 * e) {
+      cam.fov = 60 + 12 * e;
+      cam.updateProjectionMatrix();
+    }
+    const input = this.input;
+    const skip = c.t > 0.5 && (input.clicked || ['Space', 'Enter', 'KeyE', 'Escape'].some((code) => input.wasPressed(code)));
+    if (k >= 1 || skip) this.endShot();
+  }
+
   updateCamera(dt) {
     const p = this.player;
     if (!p) return;
@@ -1082,8 +1137,20 @@ class Game {
       const moving = p.onGround && p.moving && p.trapped <= 0;
       const amt = moving ? (p.running ? 0.065 : p.crouch ? 0.02 : 0.035) : 0;
       this.bobAmt = damp(this.bobAmt || 0, amt, 8, dt);
-      cam.position.set(p.pos.x, p.pos.y + p.eyeH + Math.sin(p.bob) * this.bobAmt, p.pos.z);
-      roll = Math.cos(p.bob * 0.5) * this.bobAmt * 0.25;
+      // landing: a quick dip on a spring
+      if (p.landKick) {
+        this.dipV = (this.dipV || 0) - p.landKick * 1.7;
+        p.landKick = 0;
+      }
+      if (dt > 0) {
+        this.dipV = (this.dipV || 0) + (-(this.dip || 0) * 130 - (this.dipV || 0) * 15) * dt;
+        this.dip = (this.dip || 0) + this.dipV * dt;
+      }
+      cam.position.set(p.pos.x, p.pos.y + p.eyeH + Math.sin(p.bob) * this.bobAmt + (this.dip || 0), p.pos.z);
+      // lean a touch into strafes
+      const lat = p.vel.x * Math.cos(p.yaw) - p.vel.z * Math.sin(p.yaw);
+      this.strafeRoll = damp(this.strafeRoll || 0, -lat * 0.005, 6, dt);
+      roll = Math.cos(p.bob * 0.5) * this.bobAmt * 0.25 + this.strafeRoll;
     }
     if (!p.alive) {
       const t = Math.min(1, p.deathT / 1.2);
@@ -1105,7 +1172,12 @@ class Game {
     if (!vm) return;
     vm.group.visible = p.alive && !p.hidden;
     const bob = this.bobAmt || 0;
-    vm.group.position.set(Math.cos(p.bob * 0.5) * bob * 0.5, Math.sin(p.bob) * bob * 0.6 - (p.crouch ? 0.02 : 0), 0);
+    // the weapon lags behind the view as it turns, and rises and falls with breathing
+    this.swayX = damp(this.swayX || 0, clamp(-(p.turnX || 0) * 0.011, -0.045, 0.045), 10, dt);
+    this.swayY = damp(this.swayY || 0, clamp((p.turnY || 0) * 0.011, -0.035, 0.035), 10, dt);
+    const breath = Math.sin(this.time * 1.7) * 0.0035;
+    vm.group.position.set(Math.cos(p.bob * 0.5) * bob * 0.5 + this.swayX, Math.sin(p.bob) * bob * 0.6 - (p.crouch ? 0.02 : 0) + this.swayY + breath + (this.dip || 0) * 0.25, 0);
+    vm.group.rotation.set(this.swayY * 1.2, this.swayX * 1.6, this.swayX * 1.1);
     const rel = p.reloading > 0 ? Math.sin((1 - p.reloading / p.reloadTotal) * Math.PI) : 0;
     const sw = p.switchT / 0.35;
     const base = vm.basePos;
@@ -1136,7 +1208,7 @@ class Game {
       else this.lightFlicker = 0;
     } else fl = Math.random() < 0.5 ? 0.15 : 0.7;
     const dayCamp = lvl.kind === 'camp' && this.run.phase === 'day';
-    this.flashlight.intensity = p.flashlight && p.alive && !dayCamp ? 90 * fl : 0;
+    this.flashlight.intensity = p.flashlight && p.alive && !dayCamp && !this.cine ? 65 * fl : 0;
     this.flashlight.castShadow = lvl.kind === 'building';
     this.muzzle.intensity = Math.max(0, this.muzzle.intensity - dt * 160);
     this.lightT = (this.lightT || 0) - dt;
@@ -1181,7 +1253,9 @@ class Game {
       this.heartCd = 1.1 - intensity * 0.6;
     }
     const dayCamp = lvl.kind === 'camp' && this.run.phase !== 'night';
-    this.ui.el.vignette.style.opacity = (dayCamp ? 0.35 : 0.75 + intensity * 0.25).toFixed(2);
+    // the film grade already darkens the corners; this overlay is for dread
+    const calm = QUALITY[this.settings.quality].post ? 0.12 : 0.35;
+    this.ui.el.vignette.style.opacity = (dayCamp ? calm : 0.6 + intensity * 0.4).toFixed(2);
   }
 }
 

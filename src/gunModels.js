@@ -13,21 +13,44 @@ const cyl = (r0, r1, len, mat, x, y, z, seg = 8) => {
   return m;
 };
 
+// Gun-metal, polymer, wood, steel and brass. The first-person versions keep
+// a faint glow of their own so they never vanish into the dark.
 function mats(def, vm) {
-  const e = vm ? 0.55 : 0;
-  const mk = (c) => {
+  const e = vm ? 0.14 : 0;
+  const mk = (c, roughness, metalness) => {
     const col = new THREE.Color(c);
-    return L({ color: col, emissive: col.clone().multiplyScalar(e) });
+    return L({ color: col, emissive: col.clone().multiplyScalar(e), roughness, metalness });
   };
   return {
-    metal: mk(def.look.body ?? 0x2c2c30),
-    dark: mk(0x18181a),
-    slide: mk(def.look.slide ?? def.look.body ?? 0x3a3a40),
-    wood: mk(0x6a3e20),
-    steel: mk(0x9a9ea4),
-    brass: mk(0xb08a3a),
+    metal: mk(def.look.body ?? 0x2c2c30, 0.42, 0.7),
+    dark: mk(0x18181a, 0.55, 0.25),
+    slide: mk(def.look.slide ?? def.look.body ?? 0x3a3a40, 0.36, 0.8),
+    wood: mk(0x6a3e20, 0.62, 0),
+    steel: mk(0x9a9ea4, 0.28, 0.92),
+    brass: mk(0xb08a3a, 0.32, 0.9),
   };
 }
+
+// A rounded limb segment lying along z (hands, forearms, sleeves).
+function limb(r, len, mat, x, y, z, sx = 1, sy = 1) {
+  const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), mat);
+  m.rotation.x = Math.PI / 2;
+  m.position.set(x, y, z);
+  m.scale.set(sx, 1, sy);
+  return m;
+}
+// A hand gripping something: palm, a row of knuckles and the thumb.
+function hand(mat, x, y, z, s = 1) {
+  const h = new THREE.Group();
+  h.add(limb(0.03 * s, 0.045 * s, mat, 0, 0, 0, 1.15, 0.9));
+  h.add(limb(0.017 * s, 0.05 * s, mat, 0.024 * s, 0.02 * s, -0.012 * s));
+  h.add(limb(0.016 * s, 0.03 * s, mat, -0.022 * s, 0.03 * s, -0.02 * s));
+  h.position.set(x, y, z);
+  return h;
+}
+
+const vmSkin = () => L({ color: 0xb08068, emissive: 0x1e140e, roughness: 0.62 });
+const vmSleeve = (c = 0x2a2620) => L({ color: c, emissive: new THREE.Color(c).multiplyScalar(0.25), roughness: 0.95, map: tex('fabric', 40) });
 
 export function makeGunModel(def, vm = false) {
   const g = new THREE.Group();
@@ -310,9 +333,9 @@ const VM_POSE = {
 
 export function makeViewModel(def) {
   const g = new THREE.Group();
-  const skin = new THREE.MeshLambertMaterial({ color: 0x8a6a58, emissive: 0x3a2820 });
-  const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x2a2620, emissive: 0x161410 });
-  const metal = new THREE.MeshLambertMaterial({ color: 0x3a3a3e, emissive: 0x26262a });
+  const skin = vmSkin();
+  const sleeveMat = vmSleeve();
+  const metal = L({ color: 0x3a3a3e, emissive: 0x0e0e10, roughness: 0.4, metalness: 0.7 });
   const pose = VM_POSE[def.cat] || VM_POSE.pistol;
   const gun = new THREE.Group();
   gun.position.set(...pose.pos);
@@ -324,9 +347,10 @@ export function makeViewModel(def) {
     model.group.rotation.set(0.9, 0.25, 0.15);
     model.group.position.set(0, -0.02, 0.02);
   }
-  // right hand + cuff on the grip
-  gun.add(box(0.06, 0.07, 0.09, skin, 0, -0.06, 0.06));
-  gun.add(box(0.07, 0.07, 0.14, sleeveMat, 0, -0.08, 0.15));
+  // right hand on the grip, forearm and sleeve running back out of view
+  gun.add(hand(skin, 0, -0.055, 0.055));
+  gun.add(limb(0.028, 0.1, skin, 0, -0.07, 0.13));
+  gun.add(limb(0.04, 0.16, sleeveMat, 0, -0.085, 0.24, 1.05, 1));
   const twoHanded = !['pistol', 'melee', 'thrown'].includes(def.cat);
   let lens = null;
   let torch = null;
@@ -334,8 +358,13 @@ export function makeViewModel(def) {
     // left hand on the fore-grip
     const fx = def.cat === 'bow' ? 0 : -0.01;
     const fz = def.cat === 'bow' ? -0.08 : -0.24 * pose.scale;
-    gun.add(box(0.06, 0.06, 0.08, skin, fx - 0.03, -0.04, fz));
-    gun.add(box(0.07, 0.07, 0.2, sleeveMat, fx - 0.08, -0.09, fz + 0.12));
+    gun.add(hand(skin, fx - 0.025, -0.035, fz));
+    const fore = limb(0.027, 0.12, skin, fx - 0.06, -0.07, fz + 0.1);
+    fore.rotation.y = 0.35;
+    gun.add(fore);
+    const sleeve = limb(0.04, 0.2, sleeveMat, fx - 0.11, -0.1, fz + 0.24);
+    sleeve.rotation.y = 0.35;
+    gun.add(sleeve);
   } else {
     // flashlight in the left hand
     torch = new THREE.Group();
@@ -350,8 +379,9 @@ export function makeViewModel(def) {
     lens.position.z = -0.187;
     lens.rotation.y = Math.PI;
     torch.add(lens);
-    torch.add(box(0.07, 0.08, 0.1, skin, 0, -0.03, 0.06));
-    torch.add(box(0.08, 0.08, 0.12, sleeveMat, 0, -0.05, 0.17));
+    torch.add(hand(skin, 0, -0.025, 0.05, 1.3));
+    torch.add(limb(0.036, 0.12, skin, 0, -0.04, 0.15));
+    torch.add(limb(0.052, 0.2, sleeveMat, 0, -0.05, 0.3));
     torch.position.set(-0.22, -0.22, -0.5);
     torch.scale.setScalar(0.65);
     g.add(torch);
@@ -374,10 +404,12 @@ export function makeViewModel(def) {
 // Empty-handed view model (no weapon equipped).
 export function makeFistsViewModel() {
   const g = new THREE.Group();
-  const skin = new THREE.MeshLambertMaterial({ color: 0x8a6a58, emissive: 0x3a2820 });
+  const skin = vmSkin();
   const gun = new THREE.Group();
   gun.position.set(0.2, -0.24, -0.4);
-  gun.add(box(0.08, 0.08, 0.1, skin, 0, 0, 0));
+  gun.add(hand(skin, 0, 0, 0, 1.4));
+  gun.add(limb(0.032, 0.12, skin, 0, -0.02, 0.1));
+  gun.add(limb(0.045, 0.2, vmSleeve(), 0, -0.03, 0.26));
   g.add(gun);
   const flash = new THREE.Sprite(new THREE.SpriteMaterial({ opacity: 0, transparent: true }));
   flash.visible = false;

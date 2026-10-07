@@ -9,18 +9,14 @@ export const RARITY = {
 };
 export const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 
+// Ammunition is shared: every weapon draws from one of these pools.
 export const AMMO = {
-  pistol: { name: 'Pistol rounds', short: 'Pistol', pickup: [12, 26] },
-  magnum: { name: 'Magnum rounds', short: 'Magnum', pickup: [5, 12] },
-  shells: { name: 'Shotgun shells', short: 'Shells', pickup: [6, 14] },
-  rifle: { name: 'Rifle rounds', short: 'Rifle', pickup: [18, 40] },
-  sniper: { name: 'Sniper rounds', short: 'Sniper', pickup: [4, 9] },
-  arrows: { name: 'Arrows & bolts', short: 'Arrows', pickup: [5, 12] },
-  rockets: { name: 'Rockets', short: 'Rockets', pickup: [1, 3] },
-  grenades40: { name: '40mm grenades', short: '40mm', pickup: [2, 5] },
-  grenade: { name: 'Hand grenades', short: 'Grenades', pickup: [1, 3] },
-  molotov: { name: 'Molotov cocktails', short: 'Molotovs', pickup: [1, 3] },
-  fuel: { name: 'Fuel', short: 'Fuel', pickup: [30, 70] },
+  pistol: { name: 'Pistol rounds', short: 'Pistol', pickup: [14, 30], desc: 'Handguns, revolvers and SMGs' },
+  shells: { name: 'Shotgun shells', short: 'Shells', pickup: [6, 14], desc: 'Every shotgun' },
+  rifle: { name: 'Rifle rounds', short: 'Rifle', pickup: [18, 40], desc: 'Rifles, sniper rifles and machine guns' },
+  arrows: { name: 'Arrows & bolts', short: 'Arrows', pickup: [5, 12], desc: 'Bows and crossbows' },
+  explosives: { name: 'Explosives', short: 'Explosives', pickup: [1, 3], desc: 'Rockets, 40mm grenades and hand grenades' },
+  fuel: { name: 'Fuel', short: 'Fuel', pickup: [25, 60], desc: 'The flamethrower and molotovs (10 per bottle)' },
 };
 export const AMMO_ORDER = Object.keys(AMMO);
 
@@ -57,10 +53,10 @@ const W = [
   // ---------------------------------------------------------------- pistols
   { id: 'glock', name: 'Glock 17', cat: 'pistol', rarity: 'common', ammo: 'pistol', mag: 17, dmg: 26, rate: 4.2, range: 45, spread: 0.018, reload: 1.4, noise: 34 },
   { id: 'beretta', name: 'Beretta M9', cat: 'pistol', rarity: 'common', ammo: 'pistol', mag: 15, dmg: 28, rate: 3.8, range: 45, spread: 0.017, reload: 1.5, noise: 34, look: { body: 0x2a2a2a, slide: 0x4a4a50 } },
-  { id: 'revolver', name: 'Service Revolver', cat: 'pistol', rarity: 'common', ammo: 'magnum', mag: 6, dmg: 46, rate: 2.4, range: 50, spread: 0.014, reload: 2.0, noise: 38, sound: 'magnum', look: { revolver: true } },
+  { id: 'revolver', name: 'Service Revolver', cat: 'pistol', rarity: 'common', ammo: 'pistol', mag: 6, dmg: 46, rate: 2.4, range: 50, spread: 0.014, reload: 2.0, noise: 38, sound: 'magnum', look: { revolver: true } },
   { id: 'm1911', name: 'M1911', cat: 'pistol', rarity: 'uncommon', ammo: 'pistol', mag: 8, dmg: 38, rate: 3.2, range: 48, spread: 0.015, reload: 1.5, noise: 36, look: { body: 0x5a5e66, slide: 0x6a6e76 } },
-  { id: 'magnum', name: '.357 Magnum', cat: 'pistol', rarity: 'uncommon', ammo: 'magnum', mag: 6, dmg: 64, rate: 2.0, range: 55, spread: 0.012, reload: 2.1, noise: 42, pierce: 1, sound: 'magnum', look: { revolver: true, long: true, body: 0xb0b4ba } },
-  { id: 'deagle', name: 'Desert Eagle', cat: 'pistol', rarity: 'rare', ammo: 'magnum', mag: 7, dmg: 88, rate: 1.8, range: 58, spread: 0.014, reload: 1.8, noise: 46, pierce: 1, sound: 'magnum', look: { body: 0x9a9ca0, slide: 0xb4b6ba, big: true } },
+  { id: 'magnum', name: '.357 Magnum', cat: 'pistol', rarity: 'uncommon', ammo: 'pistol', mag: 6, dmg: 64, rate: 2.0, range: 55, spread: 0.012, reload: 2.1, noise: 42, pierce: 1, sound: 'magnum', look: { revolver: true, long: true, body: 0xb0b4ba } },
+  { id: 'deagle', name: 'Desert Eagle', cat: 'pistol', rarity: 'rare', ammo: 'pistol', mag: 7, dmg: 88, rate: 1.8, range: 58, spread: 0.014, reload: 1.8, noise: 46, pierce: 1, sound: 'magnum', look: { body: 0x9a9ca0, slide: 0xb4b6ba, big: true } },
   { id: 'autopistol', name: 'Glock 18 Auto', cat: 'pistol', rarity: 'rare', ammo: 'pistol', mag: 33, dmg: 22, rate: 14, auto: true, range: 38, spread: 0.05, reload: 1.6, noise: 34, look: { extMag: true } },
 
   // ---------------------------------------------------------------- SMGs
@@ -88,9 +84,9 @@ const W = [
   { id: 'scar', name: 'SCAR-H', cat: 'rifle', rarity: 'epic', ammo: 'rifle', mag: 20, dmg: 58, rate: 8, auto: true, range: 85, spread: 0.016, reload: 2.2, noise: 44, pierce: 1, look: { body: 0xb09a72, scope: true } },
 
   // ---------------------------------------------------------------- snipers
-  { id: 'hunting', name: 'Hunting Rifle', cat: 'sniper', rarity: 'uncommon', ammo: 'sniper', mag: 5, dmg: 125, rate: 0.9, range: 120, spread: 0.003, reload: 2.8, noise: 50, pierce: 2, look: { wood: true, scope: true } },
-  { id: 'dragunov', name: 'Dragunov', cat: 'sniper', rarity: 'epic', ammo: 'sniper', mag: 10, dmg: 115, rate: 2.2, range: 120, spread: 0.006, reload: 2.6, noise: 50, pierce: 2, look: { wood: true, scope: true, curved: true } },
-  { id: 'barrett', name: 'Barrett M82', cat: 'sniper', rarity: 'legendary', ammo: 'sniper', mag: 10, dmg: 270, rate: 1.4, range: 150, spread: 0.004, reload: 3.2, noise: 60, pierce: 6, look: { scope: true, big: true } },
+  { id: 'hunting', name: 'Hunting Rifle', cat: 'sniper', rarity: 'uncommon', ammo: 'rifle', mag: 5, dmg: 125, rate: 0.9, range: 120, spread: 0.003, reload: 2.8, noise: 50, pierce: 2, look: { wood: true, scope: true } },
+  { id: 'dragunov', name: 'Dragunov', cat: 'sniper', rarity: 'epic', ammo: 'rifle', mag: 10, dmg: 115, rate: 2.2, range: 120, spread: 0.006, reload: 2.6, noise: 50, pierce: 2, look: { wood: true, scope: true, curved: true } },
+  { id: 'barrett', name: 'Barrett M82', cat: 'sniper', rarity: 'legendary', ammo: 'rifle', mag: 10, dmg: 270, rate: 1.4, range: 150, spread: 0.004, reload: 3.2, noise: 60, pierce: 6, look: { scope: true, big: true } },
 
   // ---------------------------------------------------------------- machine guns
   { id: 'm249', name: 'M249 SAW', cat: 'lmg', rarity: 'epic', ammo: 'rifle', mag: 100, dmg: 34, rate: 13, auto: true, range: 75, spread: 0.045, reload: 4.6, noise: 46, look: { box: true, stock: true } },
@@ -98,9 +94,9 @@ const W = [
   { id: 'minigun', name: 'Minigun', cat: 'lmg', rarity: 'legendary', ammo: 'rifle', mag: 200, dmg: 30, rate: 30, auto: true, range: 70, spread: 0.07, reload: 6, noise: 52, spinUp: 0.55, look: { gatling: true } },
 
   // ---------------------------------------------------------------- launchers (player only)
-  { id: 'm79', name: 'M79 Grenade Launcher', cat: 'launcher', rarity: 'rare', ammo: 'grenades40', mag: 1, dmg: 180, splash: 4.5, rate: 1.2, range: 60, spread: 0.01, reload: 1.9, noise: 30, proj: { kind: 'grenade', speed: 30, grav: 14, fuse: 0 }, look: { wood: true, tube: true } },
-  { id: 'mgl', name: 'Milkor MGL', cat: 'launcher', rarity: 'legendary', ammo: 'grenades40', mag: 6, dmg: 180, splash: 4.5, rate: 1.7, range: 60, spread: 0.012, reload: 4.5, noise: 30, proj: { kind: 'grenade', speed: 30, grav: 14, fuse: 0 }, look: { drum: true, tube: true } },
-  { id: 'rpg', name: 'RPG-7', cat: 'launcher', rarity: 'epic', ammo: 'rockets', mag: 1, dmg: 280, splash: 5.5, rate: 0.8, range: 120, spread: 0.008, reload: 3.0, noise: 55, proj: { kind: 'rocket', speed: 45, grav: 0 }, sound: 'rocket', look: { rpg: true } },
+  { id: 'm79', name: 'M79 Grenade Launcher', cat: 'launcher', rarity: 'rare', ammo: 'explosives', mag: 1, dmg: 180, splash: 4.5, rate: 1.2, range: 60, spread: 0.01, reload: 1.9, noise: 30, proj: { kind: 'grenade', speed: 30, grav: 14, fuse: 0 }, look: { wood: true, tube: true } },
+  { id: 'mgl', name: 'Milkor MGL', cat: 'launcher', rarity: 'legendary', ammo: 'explosives', mag: 6, dmg: 180, splash: 4.5, rate: 1.7, range: 60, spread: 0.012, reload: 4.5, noise: 30, proj: { kind: 'grenade', speed: 30, grav: 14, fuse: 0 }, look: { drum: true, tube: true } },
+  { id: 'rpg', name: 'RPG-7', cat: 'launcher', rarity: 'epic', ammo: 'explosives', mag: 1, dmg: 280, splash: 5.5, rate: 0.8, range: 120, spread: 0.008, reload: 3.0, noise: 55, proj: { kind: 'rocket', speed: 45, grav: 0 }, sound: 'rocket', look: { rpg: true } },
 
   // ---------------------------------------------------------------- bows
   { id: 'recurve', name: 'Recurve Bow', cat: 'bow', rarity: 'common', ammo: 'arrows', mag: 1, dmg: 72, rate: 1.1, range: 70, spread: 0.006, reload: 0.55, noise: 4, pierce: 1, proj: { kind: 'arrow', speed: 55, grav: 5 }, sound: 'bow' },
@@ -108,8 +104,8 @@ const W = [
   { id: 'crossbow', name: 'Crossbow', cat: 'bow', rarity: 'uncommon', ammo: 'arrows', mag: 1, dmg: 125, rate: 1.0, range: 85, spread: 0.003, reload: 1.6, noise: 6, pierce: 3, proj: { kind: 'arrow', speed: 80, grav: 3 }, sound: 'bow', look: { crossbow: true } },
 
   // ---------------------------------------------------------------- thrown & flame (player only)
-  { id: 'grenades', name: 'Hand Grenades', cat: 'thrown', rarity: 'uncommon', ammo: 'grenade', mag: 1, dmg: 230, splash: 5.5, rate: 1.1, range: 30, reload: 0.4, noise: 0, proj: { kind: 'frag', speed: 17, grav: 14, fuse: 2.2 }, sound: 'throw', look: { frag: true } },
-  { id: 'molotov', name: 'Molotov Cocktails', cat: 'thrown', rarity: 'uncommon', ammo: 'molotov', mag: 1, dmg: 60, splash: 4.5, rate: 1.1, range: 28, reload: 0.4, noise: 0, proj: { kind: 'molotov', speed: 16, grav: 14, fuse: 0 }, sound: 'throw', look: { molotov: true } },
+  { id: 'grenades', name: 'Hand Grenades', cat: 'thrown', rarity: 'uncommon', ammo: 'explosives', mag: 1, dmg: 230, splash: 5.5, rate: 1.1, range: 30, reload: 0.4, noise: 0, proj: { kind: 'frag', speed: 17, grav: 14, fuse: 2.2 }, sound: 'throw', look: { frag: true } },
+  { id: 'molotov', name: 'Molotov Cocktails', cat: 'thrown', rarity: 'uncommon', ammo: 'fuel', ammoPer: 10, mag: 1, dmg: 60, splash: 4.5, rate: 1.1, range: 28, reload: 0.4, noise: 0, proj: { kind: 'molotov', speed: 16, grav: 14, fuse: 0 }, sound: 'throw', look: { molotov: true } },
   { id: 'flamethrower', name: 'Flamethrower', cat: 'flame', rarity: 'legendary', ammo: 'fuel', mag: 100, dmg: 9, rate: 20, auto: true, range: 10, spread: 0.18, reload: 3.5, noise: 20, sound: 'flame', look: { tank: true } },
 ];
 

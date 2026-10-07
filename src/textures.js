@@ -1,8 +1,19 @@
-// Procedurally painted low-resolution textures (Doom-style pixel look).
+// Procedurally painted textures. Each is painted small, then upscaled
+// seamlessly with smoothing and a layer of fine grain so surfaces read as
+// detailed materials up close rather than chunky pixels.
 import * as THREE from 'three';
 import { RNG } from './util.js';
 
 const cache = new Map();
+let ANISO = 4;
+
+export function setAnisotropy(n) {
+  ANISO = n;
+  for (const t of cache.values()) {
+    t.anisotropy = n;
+    t.needsUpdate = true;
+  }
+}
 
 function canvas(w, h) {
   const c = document.createElement('canvas');
@@ -11,12 +22,47 @@ function canvas(w, h) {
   return c;
 }
 
-function toTex(c, { repeat = true, nearest = true, srgb = true } = {}) {
-  const t = new THREE.CanvasTexture(c);
-  if (nearest) {
-    t.magFilter = THREE.NearestFilter;
-    t.minFilter = THREE.NearestMipmapLinearFilter;
+let grainSeed = 1;
+function addGrain(ctx, w, h, amount) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  let s = (grainSeed = (grainSeed * 16807) % 2147483647);
+  for (let i = 0; i < d.length; i += 4) {
+    s = (s * 16807) % 2147483647;
+    const n = 1 + ((s / 2147483647) - 0.5) * amount;
+    d[i] *= n;
+    d[i + 1] *= n;
+    d[i + 2] *= n;
   }
+  ctx.putImageData(img, 0, 0);
+}
+
+// Upscale a small painted tile. Repeating tiles are sampled from a 3x3
+// mosaic of themselves so the smoothing wraps around the edges seamlessly.
+function upscale(c, repeat) {
+  const k = c.width <= 32 ? 8 : c.width <= 64 ? 4 : 2;
+  const W = c.width * k;
+  const H = c.height * k;
+  const big = canvas(W, H);
+  const ctx = big.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  if (repeat) {
+    const mosaic = canvas(c.width * 3, c.height * 3);
+    const m = mosaic.getContext('2d');
+    for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) m.drawImage(c, x * c.width, y * c.height);
+    ctx.drawImage(mosaic, c.width, c.height, c.width, c.height, 0, 0, W, H);
+  } else ctx.drawImage(c, 0, 0, W, H);
+  addGrain(ctx, W, H, 0.1);
+  return big;
+}
+
+function toTex(c, { repeat = true, srgb = true, detail = true } = {}) {
+  const src = detail && c.width <= 128 ? upscale(c, repeat) : c;
+  const t = new THREE.CanvasTexture(src);
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.anisotropy = ANISO;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   t.generateMipmaps = true;
@@ -65,6 +111,97 @@ function drips(ctx, w, h, rng, n) {
     ctx.fillRect(x, 0, rng.int(1, 2), len);
     ctx.fillRect(x - 1, len - 1, 3, 2);
   }
+}
+
+// ---------------------------------------------------------------- facade helpers
+function bricks(ctx, rng, w, h, base) {
+  ctx.fillStyle = shade(base, 0.45);
+  ctx.fillRect(0, 0, w, h);
+  for (let row = 0; row * 6 < h; row++) {
+    const off = row % 2 ? 7 : 0;
+    for (let x = -14; x < w; x += 14) {
+      ctx.fillStyle = shade(base, rng.range(0.78, 1.12));
+      ctx.fillRect(x + off + 1, row * 6 + 1, 13, 5);
+    }
+  }
+}
+
+function cracks(ctx, rng, cx, cy, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 7; i++) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    let x = cx;
+    let y = cy;
+    for (let k = 0; k < 4; k++) ctx.lineTo((x += rng.range(-12, 12)), (y += rng.range(-12, 12)));
+    ctx.stroke();
+  }
+}
+
+// A window with frame and sill. variant: 0 intact, 1 boarded, 2 broken.
+function window_(ctx, rng, x, y, w, h, variant, frame, shutters) {
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(x - 3, y + h + 2, w + 6, 4); // sill shadow
+  ctx.fillStyle = frame;
+  ctx.fillRect(x - 4, y - 4, w + 8, h + 8);
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#5a6a78');
+  g.addColorStop(0.5, '#1a2028');
+  g.addColorStop(1, '#2a3038');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(220,230,240,0.12)';
+  ctx.fillRect(x + 4, y + 2, w * 0.25, h - 4);
+  ctx.fillStyle = frame;
+  ctx.fillRect(x + w / 2 - 1.5, y, 3, h);
+  ctx.fillRect(x, y + h / 2 - 1.5, w, 3);
+  if (rng.chance(0.4) && variant === 0) {
+    ctx.fillStyle = rng.pick(['rgba(140,60,50,0.7)', 'rgba(200,190,150,0.6)', 'rgba(60,80,110,0.6)']);
+    ctx.fillRect(x + 1, y + 1, w * 0.22, h - 2);
+    ctx.fillRect(x + w * 0.78 - 1, y + 1, w * 0.22, h - 2);
+  }
+  if (shutters) {
+    ctx.fillStyle = '#3a4a3a';
+    ctx.fillRect(x - 16, y - 4, 10, h + 8);
+    ctx.fillRect(x + w + 6, y - 4, 10, h + 8);
+  }
+  if (variant === 1) {
+    ctx.fillStyle = '#7a5a3a';
+    for (let i = 0; i < 4; i++) {
+      ctx.save();
+      ctx.translate(x + w / 2, y + 8 + i * (h / 4));
+      ctx.rotate(rng.range(-0.15, 0.15));
+      ctx.fillRect(-w / 2 - 4, -5, w + 8, 10);
+      ctx.restore();
+    }
+  } else if (variant === 2) {
+    ctx.fillStyle = '#06080a';
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.3, y);
+    ctx.lineTo(x + w, y + h * 0.2);
+    ctx.lineTo(x + w * 0.7, y + h * 0.8);
+    ctx.lineTo(x + w * 0.2, y + h * 0.5);
+    ctx.fill();
+    cracks(ctx, rng, x + w * 0.5, y + h * 0.4, 'rgba(200,210,220,0.7)');
+  }
+}
+
+// A horizontal ribbon window (offices, police, military).
+function ribbon(ctx, rng, x, y, w, h, variant) {
+  ctx.fillStyle = '#3a3a38';
+  ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#506070');
+  g.addColorStop(1, '#161c22');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#3a3a38';
+  for (let i = 1; i < 4; i++) ctx.fillRect(x + (w / 4) * i - 1, y, 2, h);
+  if (variant === 1) {
+    ctx.fillStyle = '#6a5038';
+    for (let i = 0; i < 3; i++) ctx.fillRect(x - 2, y + 2 + i * 11, w + 4, 8);
+  } else if (variant === 2) cracks(ctx, rng, x + w * 0.6, y + h * 0.5, 'rgba(200,210,220,0.7)');
 }
 
 const builders = {
@@ -389,7 +526,7 @@ const builders = {
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 64, 64);
-    return toTex(c, { repeat: false, nearest: false });
+    return toTex(c, { repeat: false, detail: false });
   },
   flame() {
     const c = canvas(16, 32);
@@ -450,7 +587,7 @@ const builders = {
     }
     ctx.closePath();
     ctx.stroke();
-    return toTex(c, { repeat: false, nearest: false });
+    return toTex(c, { repeat: false, detail: false });
   },
   hatch() {
     const rng = new RNG(5);
@@ -717,6 +854,301 @@ const builders = {
     for (let i = 0; i < 6; i++) ctx.fillRect(rng.int(4, 58), rng.int(4, 42), 3, 3);
     speckle(ctx, 64, 48, rng, 0.2);
     return toTex(c, { repeat: false });
+  },
+  // ---------------------------------------------------------------- cloth
+  fabric(seed = 40) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#d8d8d8';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let y = 0; y < 64; y += 2) {
+      ctx.fillStyle = 'rgba(0,0,0,0.06)';
+      ctx.fillRect(0, y, 64, 1);
+    }
+    for (let x = 0; x < 64; x += 2) {
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(x, 0, 1, 64);
+    }
+    // folds and wear
+    for (let i = 0; i < 7; i++) {
+      ctx.strokeStyle = `rgba(0,0,0,${rng.range(0.06, 0.16)})`;
+      ctx.lineWidth = rng.range(1, 3);
+      ctx.beginPath();
+      const x = rng.range(0, 64);
+      ctx.moveTo(x, 0);
+      ctx.quadraticCurveTo(x + rng.range(-12, 12), 32, x + rng.range(-8, 8), 64);
+      ctx.stroke();
+    }
+    grime(ctx, 64, 64, rng, 10, '#3a2a1a');
+    grime(ctx, 64, 64, rng, 3, '#4a0606');
+    return toTex(c);
+  },
+  denim(seed = 41) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#cfcfcf';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let i = -64; i < 64; i += 3) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.09)';
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i + 64, 64);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.fillRect(30, 0, 2, 64); // seam
+    grime(ctx, 64, 64, rng, 12, '#2a2010');
+    return toTex(c);
+  },
+  // ---------------------------------------------------------------- foliage & atmosphere
+  grassBlades(seed = 50) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, 64, 64);
+    for (let i = 0; i < 26; i++) {
+      const x = rng.range(4, 60);
+      const h = rng.range(24, 62);
+      const lean = rng.range(-10, 10);
+      const g = rng.int(150, 230);
+      ctx.strokeStyle = `rgb(${g},${g},${g})`;
+      ctx.lineWidth = rng.range(1.2, 2.6);
+      ctx.beginPath();
+      ctx.moveTo(x, 64);
+      ctx.quadraticCurveTo(x + lean * 0.3, 64 - h * 0.6, x + lean, 64 - h);
+      ctx.stroke();
+    }
+    return toTex(c, { repeat: false, detail: false });
+  },
+  smoke() {
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    const rng = new RNG(51);
+    for (let i = 0; i < 9; i++) {
+      const x = 32 + rng.range(-10, 10);
+      const y = 32 + rng.range(-10, 10);
+      const r = rng.range(12, 22);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.35)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 64, 64);
+    }
+    return toTex(c, { repeat: false, detail: false });
+  },
+  // ---------------------------------------------------------------- building exteriors
+  // One "bay" of a facade (3 m wide, one storey tall). seed % 3 picks a
+  // variant: 0 intact, 1 boarded up, 2 broken.
+  facadeSiding(seed = 60) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    const base = rng.pick([
+      [196, 190, 172],
+      [150, 166, 172],
+      [168, 176, 150],
+      [186, 168, 140],
+    ]);
+    for (let y = 0; y < 128; y += 8) {
+      ctx.fillStyle = shade(base, rng.range(0.92, 1.04));
+      ctx.fillRect(0, y, 128, 8);
+      ctx.fillStyle = shade(base, 0.62);
+      ctx.fillRect(0, y + 7, 128, 1);
+    }
+    window_(ctx, rng, 34, 26, 60, 64, seed % 3, '#f0ece0', true);
+    grime(ctx, 128, 128, rng, 22, '#2a2418');
+    return toTex(c);
+  },
+  facadeBrick(seed = 63) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    bricks(ctx, rng, 128, 128, [128, 64, 48]);
+    window_(ctx, rng, 30, 22, 68, 72, seed % 3, '#c8c0b0', false);
+    grime(ctx, 128, 128, rng, 20, '#140c08');
+    return toTex(c);
+  },
+  facadeGlass(seed = 66) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 0, 128);
+    g.addColorStop(0, '#5a7088');
+    g.addColorStop(0.55, '#2a3848');
+    g.addColorStop(1, '#3a4a58');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    // sky reflections
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = `rgba(200,220,240,${rng.range(0.05, 0.14)})`;
+      ctx.fillRect(rng.int(0, 120), 0, rng.int(6, 22), 128);
+    }
+    ctx.fillStyle = '#20242a';
+    ctx.fillRect(0, 0, 128, 6);
+    ctx.fillRect(0, 122, 128, 6);
+    ctx.fillRect(0, 0, 4, 128);
+    ctx.fillRect(62, 0, 4, 128);
+    ctx.fillRect(124, 0, 4, 128);
+    ctx.fillRect(0, 62, 128, 3);
+    const v = seed % 3;
+    if (v === 1) {
+      ctx.fillStyle = '#6a5038';
+      for (let i = 0; i < 5; i++) ctx.fillRect(8, 70 + i * 11, 112, 8);
+    } else if (v === 2) {
+      ctx.fillStyle = '#0a0c10';
+      ctx.beginPath();
+      ctx.moveTo(70, 10);
+      ctx.lineTo(118, 18);
+      ctx.lineTo(104, 58);
+      ctx.lineTo(80, 40);
+      ctx.fill();
+      cracks(ctx, rng, 90, 30, '#c8d8e8');
+    }
+    return toTex(c);
+  },
+  facadeConcrete(seed = 69) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#8a8680';
+    ctx.fillRect(0, 0, 128, 128);
+    speckle(ctx, 128, 128, rng, 0.25, 0.7);
+    ctx.fillStyle = '#5a5650';
+    ctx.fillRect(0, 0, 128, 2);
+    ctx.fillRect(0, 0, 2, 128);
+    // strip window
+    ribbon(ctx, rng, 10, 40, 108, 34, seed % 3);
+    grime(ctx, 128, 128, rng, 26, '#2a2824');
+    drips(ctx, 128, 128, rng, rng.int(0, 2));
+    return toTex(c);
+  },
+  facadeHospital(seed = 72) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#d8d8d0';
+    ctx.fillRect(0, 0, 128, 128);
+    speckle(ctx, 128, 128, rng, 0.12, 0.8);
+    ctx.fillStyle = '#a8aaa8';
+    ctx.fillRect(0, 0, 128, 3);
+    ctx.fillStyle = '#3a6a8a';
+    ctx.fillRect(0, 100, 128, 6); // blue band
+    window_(ctx, rng, 22, 24, 84, 58, seed % 3, '#e8e8e4', false);
+    grime(ctx, 128, 128, rng, 18, '#3a3a30');
+    return toTex(c);
+  },
+  facadeMetal(seed = 75) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    const base = rng.pick([
+      [104, 110, 112],
+      [120, 96, 70],
+      [80, 96, 104],
+    ]);
+    for (let x = 0; x < 128; x += 8) {
+      ctx.fillStyle = shade(base, 1.08);
+      ctx.fillRect(x, 0, 4, 128);
+      ctx.fillStyle = shade(base, 0.78);
+      ctx.fillRect(x + 4, 0, 4, 128);
+    }
+    grime(ctx, 128, 128, rng, 24, '#5a2a0a');
+    grime(ctx, 128, 128, rng, 10, '#1a1a1a');
+    if (seed % 3 === 2) {
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(rng.int(10, 80), rng.int(60, 100), rng.int(16, 30), rng.int(10, 24));
+    }
+    return toTex(c);
+  },
+  facadeShop(seed = 78) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#7a4a34';
+    ctx.fillRect(0, 0, 128, 128);
+    bricks(ctx, rng, 128, 30, [120, 70, 50]);
+    // big storefront window
+    const g = ctx.createLinearGradient(0, 30, 0, 118);
+    g.addColorStop(0, '#4a5a68');
+    g.addColorStop(1, '#141820');
+    ctx.fillStyle = g;
+    ctx.fillRect(6, 32, 116, 86);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = rng.pick(['#c83a2a', '#e8c040', '#3a7ac8', '#f0f0e0']);
+      ctx.fillRect(rng.int(10, 96), rng.int(40, 90), rng.int(12, 22), rng.int(14, 26));
+    }
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(0, 30, 128, 3);
+    ctx.fillRect(62, 32, 3, 86);
+    ctx.fillRect(0, 118, 128, 10);
+    if (seed % 3 === 1) {
+      ctx.fillStyle = '#6a5038';
+      for (let i = 0; i < 6; i++) ctx.fillRect(4, 40 + i * 13, 120, 9);
+    } else if (seed % 3 === 2) cracks(ctx, rng, 40, 70, '#c8d8e8');
+    return toTex(c);
+  },
+  facadeBunker(seed = 81) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#6e6c62';
+    ctx.fillRect(0, 0, 128, 128);
+    speckle(ctx, 128, 128, rng, 0.35, 0.6);
+    ctx.fillStyle = '#4e4c44';
+    for (let y = 0; y < 128; y += 32) ctx.fillRect(0, y, 128, 2);
+    ctx.fillStyle = '#121210';
+    ctx.fillRect(24, 44, 80, 10); // firing slit
+    ctx.fillStyle = '#3a3a2a';
+    ctx.fillRect(0, 100, 128, 28);
+    for (let x = 0; x < 128; x += 16) {
+      ctx.fillStyle = '#7a6e50';
+      ctx.fillRect(x + 1, 102, 14, 11);
+      ctx.fillRect(x + 9, 114, 14, 11);
+    }
+    grime(ctx, 128, 128, rng, 24, '#2a2a1a');
+    return toTex(c);
+  },
+  roofShingle(seed = 84) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    const base = rng.pick([
+      [70, 60, 56],
+      [58, 62, 66],
+      [86, 52, 40],
+    ]);
+    for (let row = 0; row < 8; row++)
+      for (let x = (row % 2) * 4; x < 64; x += 8) {
+        ctx.fillStyle = shade(base, rng.range(0.75, 1.15));
+        ctx.fillRect(x, row * 8, 7, 7);
+      }
+    grime(ctx, 64, 64, rng, 14, '#1a1a14');
+    return toTex(c);
+  },
+  roofGravel(seed = 85) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#5a5850';
+    ctx.fillRect(0, 0, 64, 64);
+    speckle(ctx, 64, 64, rng, 0.7, 0.5);
+    grime(ctx, 64, 64, rng, 18, '#2a2a26');
+    return toTex(c);
+  },
+  concreteSlab(seed = 86) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#8e8a82';
+    ctx.fillRect(0, 0, 64, 64);
+    speckle(ctx, 64, 64, rng, 0.25, 0.7);
+    ctx.fillStyle = '#6a665e';
+    ctx.fillRect(0, 0, 64, 1);
+    ctx.fillRect(0, 0, 1, 64);
+    grime(ctx, 64, 64, rng, 16, '#4a4438');
+    return toTex(c);
   },
 };
 

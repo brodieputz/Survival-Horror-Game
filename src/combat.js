@@ -100,14 +100,6 @@ export class Combat {
         break;
       }
       if (!e.alive) continue;
-      if (e.type === 'angel') {
-        this.game.audio.ricochet(h.point);
-        this.game.particles.burst(h.point, 10, 0xbbbbaa, 3);
-        if (src === this.game.player) this.game.ui.message('The bullet ricochets off cold stone.', 'dim');
-        end = h.point.clone();
-        stopped = true;
-        break;
-      }
       const head = !e.model.crawl && !e.model.quad && h.point.y > e.model.height * 0.8;
       e.hit(dmg * (head ? 1.7 : 1), src, { head });
       this.game.particles.burst(h.point, head ? 22 : 14, 0x7a0000, 3);
@@ -158,10 +150,6 @@ export class Combat {
     hits.sort((a, b) => a.d - b.d);
     let n = 0;
     for (const { e } of hits.slice(0, cleave)) {
-      if (e.type === 'angel') {
-        this.game.audio.ricochet(e.pos);
-        continue;
-      }
       e.hit(dmg, src, { melee: true });
       this.game.particles.burst(new THREE.Vector3(e.pos.x, 1.2, e.pos.z), 14, 0x7a0000, 3);
       if (fwd && e.alive && e.type !== 'brute') {
@@ -179,7 +167,7 @@ export class Combat {
     const lvl = this.game.level;
     const yaw = Math.atan2(dir.x, dir.z);
     for (const e of lvl.enemies) {
-      if (!e.alive || e.type === 'angel') continue;
+      if (!e.alive) continue;
       const d = dist2D(origin.x, origin.z, e.pos.x, e.pos.z);
       if (d > range) continue;
       const a = Math.atan2(e.pos.x - origin.x, e.pos.z - origin.z);
@@ -229,7 +217,7 @@ export class Combat {
       if (!lvl.world.los(pos.x, pos.z, e.pos.x, e.pos.z) && d > 1.5) continue;
       e.hit(dmg * f, src, { explosive: true, noCrawler });
       if (fire) e.ignite(4, 22, src);
-      if (e.alive && e.type !== 'brute' && e.type !== 'angel') {
+      if (e.alive && e.type !== 'brute') {
         const k = (1 - d / (radius + 1)) * 1.4;
         e.pos.x += ((e.pos.x - pos.x) / (d || 1)) * k;
         e.pos.z += ((e.pos.z - pos.z) / (d || 1)) * k;
@@ -276,20 +264,20 @@ export class Combat {
       glow.position.z = 0.35;
       mesh.add(glow);
     } else if (kind === 'arrow') {
-      mesh = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.75), new THREE.MeshLambertMaterial({ color: 0x8a6a40 }));
+      mesh = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.75), new THREE.MeshStandardMaterial({ color: 0x8a6a40, roughness: 0.7 }));
     } else if (kind === 'shell') {
       mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 5), new THREE.MeshBasicMaterial({ color: 0x2a2a2a }));
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex('glow'), color: 0xffd080, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
       glow.scale.setScalar(0.8);
       mesh.add(glow);
     } else if (kind === 'molotov') {
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.22, 6), new THREE.MeshLambertMaterial({ color: 0x3a6a3a, emissive: 0x102010 }));
+      mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.22, 6), new THREE.MeshStandardMaterial({ color: 0x3a6a3a, emissive: 0x102010, roughness: 0.5, metalness: 0.3 }));
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex('glow'), color: 0xff8a30, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
       glow.scale.setScalar(0.4);
       glow.position.y = 0.14;
       mesh.add(glow);
     } else {
-      mesh = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), new THREE.MeshLambertMaterial({ color: 0x3a4a2a, emissive: 0x0a0c08 }));
+      mesh = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), new THREE.MeshStandardMaterial({ color: 0x3a4a2a, emissive: 0x0a0c08, roughness: 0.5, metalness: 0.4 }));
     }
     mesh.position.copy(origin);
     this.group.add(mesh);
@@ -361,7 +349,7 @@ export class Combat {
       if (f.tick <= 0) {
         f.tick = 0.3;
         for (const e of lvl.enemies)
-          if (e.alive && e.type !== 'angel' && dist2D(f.pos.x, f.pos.z, e.pos.x, e.pos.z) < f.radius) e.ignite(2.5, 24, f.src);
+          if (e.alive && dist2D(f.pos.x, f.pos.z, e.pos.x, e.pos.z) < f.radius) e.ignite(2.5, 24, f.src);
         const p = g.player;
         if (p.alive && dist2D(f.pos.x, f.pos.z, p.pos.x, p.pos.z) < f.radius * 0.8) p.damage(5, 'fire');
       }
@@ -433,10 +421,6 @@ export class Combat {
         if (e) {
           if (p.kind === 'arrow') {
             p.hitSet.add(e);
-            if (e.type === 'angel') {
-              p.dead = true;
-              break;
-            }
             const head = p.pos.y > e.model.height * 0.8;
             e.hit(p.dmg * (head ? 1.7 : 1), p.src, { head });
             g.particles.burst(p.pos, 12, 0x7a0000, 2.5);

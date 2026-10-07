@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { tex } from './textures.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-const L = (o) => new THREE.MeshLambertMaterial(o);
+// Physically based by default: rough, non-metallic unless told otherwise.
+const L = (o) => new THREE.MeshStandardMaterial({ roughness: 0.86, metalness: 0, ...o });
 const B = (o) => new THREE.MeshBasicMaterial(o);
 
 function box(w, h, d, mat, x = 0, y = 0, z = 0) {
@@ -211,137 +212,6 @@ export function makeHound() {
   const tail = pivot(torso, 0, 0.05, -0.45);
   tail.add(box(0.04, 0.04, 0.4, skin, 0, 0, -0.2));
   return { root, hips, torso, head, jaw, arms: [], legs, tail, height: 0.75, baseLean: 0, quad: true };
-}
-
-function wingGeometry() {
-  const s = new THREE.Shape();
-  s.moveTo(0, 0);
-  s.quadraticCurveTo(0.3, 0.55, 0.15, 1.15);
-  s.lineTo(0.05, 0.9);
-  s.lineTo(-0.1, 1.0);
-  s.lineTo(-0.15, 0.7);
-  s.lineTo(-0.32, 0.75);
-  s.lineTo(-0.3, 0.45);
-  s.lineTo(-0.48, 0.42);
-  s.lineTo(-0.38, 0.15);
-  s.lineTo(-0.55, 0.05);
-  s.quadraticCurveTo(-0.2, -0.15, 0, 0);
-  const g = new THREE.ExtrudeGeometry(s, { depth: 0.04, bevelEnabled: false });
-  g.translate(0, 0, -0.02);
-  return g;
-}
-
-export function makeAngel() {
-  const stone = L({ color: 0x9a9a92, map: tex('stone', 12) });
-  const dark = B({ color: 0x050505 });
-  const root = new THREE.Group();
-  const hips = pivot(root, 0, 1.15, 0);
-  const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.5, 1.2, 10), stone);
-  robe.position.y = -0.55;
-  robe.castShadow = true;
-  hips.add(robe);
-  const torso = pivot(hips, 0, 0, 0);
-  const chest = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.24, 0.62, 8), stone);
-  chest.position.y = 0.3;
-  chest.castShadow = true;
-  torso.add(chest);
-  const head = pivot(torso, 0, 0.78, 0);
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), stone);
-  skull.scale.set(1, 1.15, 1);
-  skull.castShadow = true;
-  head.add(skull);
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), stone);
-  hair.position.set(0, 0.03, -0.02);
-  head.add(hair);
-  // snarling face (only visible in aggressive poses)
-  const face = new THREE.Group();
-  face.add(box(0.12, 0.08, 0.02, dark, 0, -0.07, 0.15));
-  for (let i = -2; i <= 2; i++) {
-    const t = new THREE.Mesh(new THREE.ConeGeometry(0.01, 0.045, 4), stone);
-    t.position.set(i * 0.022, -0.04, 0.16);
-    t.rotation.x = Math.PI;
-    face.add(t);
-    const b = t.clone();
-    b.position.y = -0.1;
-    b.rotation.x = 0;
-    face.add(b);
-  }
-  for (const s of [-1, 1]) face.add(box(0.04, 0.02, 0.02, dark, s * 0.06, 0.03, 0.15));
-  head.add(face);
-  const jaw = pivot(head, 0, -0.1, 0);
-  const arms = [];
-  for (const s of [-1, 1]) {
-    const sh = pivot(torso, s * 0.27, 0.56, 0);
-    const up = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.46, 6), stone);
-    up.position.y = -0.23;
-    up.castShadow = true;
-    sh.add(up);
-    const fore = pivot(sh, 0, -0.46, 0);
-    const fa = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.42, 6), stone);
-    fa.position.y = -0.21;
-    fa.castShadow = true;
-    fore.add(fa);
-    const hand = box(0.08, 0.14, 0.04, stone, 0, -0.48, 0);
-    fore.add(hand);
-    for (let f = -1; f <= 1; f++) {
-      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.09, 4), stone);
-      claw.position.set(f * 0.025, -0.58, 0);
-      claw.rotation.x = Math.PI;
-      fore.add(claw);
-    }
-    arms.push({ sh, fore, s });
-  }
-  const wg = wingGeometry();
-  const wings = [];
-  for (const s of [-1, 1]) {
-    const w = new THREE.Mesh(wg, stone);
-    w.castShadow = true;
-    w.position.set(s * 0.12, 0.25, -0.2);
-    w.rotation.set(0.15, s * -0.5, 0);
-    w.scale.set(-s, 1, 1);
-    torso.add(w);
-    wings.push(w);
-  }
-  return { root, hips, torso, head, jaw, arms, legs: [], face, wings, height: 2.0, baseLean: 0 };
-}
-
-// Poses for the angel (statue snaps into one each time it is seen again).
-export function setAngelPose(m, pose) {
-  const [L1, R1] = m.arms;
-  const set = (a, sx, sz, fx) => {
-    a.sh.rotation.set(sx, 0, sz);
-    a.fore.rotation.set(fx, 0, 0);
-  };
-  m.face.visible = pose >= 2;
-  m.torso.rotation.set(0, 0, 0);
-  m.head.rotation.set(0, 0, 0);
-  m.wings.forEach((w, i) => (w.rotation.y = (i ? 1 : -1) * -0.5));
-  switch (pose) {
-    case 0: // weeping, hands over face
-      set(L1, -2.3, -0.5, -1.4);
-      set(R1, -2.3, 0.5, -1.4);
-      m.head.rotation.x = 0.35;
-      m.torso.rotation.x = 0.15;
-      break;
-    case 1: // reaching
-      set(L1, -1.4, -0.1, -0.2);
-      set(R1, -1.5, 0.15, -0.1);
-      m.head.rotation.x = 0.1;
-      break;
-    case 2: // lunging snarl
-      set(L1, -2.2, -0.4, -0.5);
-      set(R1, -1.2, 0.3, -0.3);
-      m.torso.rotation.x = 0.3;
-      m.head.rotation.x = -0.15;
-      m.wings.forEach((w, i) => (w.rotation.y = (i ? 1 : -1) * -0.95));
-      break;
-    default: // clawing at the viewer
-      set(L1, -1.7, -0.6, -0.9);
-      set(R1, -2.6, 0.2, -0.4);
-      m.torso.rotation.set(0.35, 0.2, 0);
-      m.head.rotation.set(-0.2, -0.2, 0.15);
-      m.wings.forEach((w, i) => (w.rotation.y = (i ? 1 : -1) * -1.1));
-  }
 }
 
 // ---------------------------------------------------------------- Props
@@ -744,65 +614,6 @@ export function makeDoorFrame(width) {
   rune.position.y = 0.02;
   g.add(rune);
   return { group: g, rune };
-}
-
-// ---------------------------------------------------------------- View model
-
-export function makeViewModel() {
-  const g = new THREE.Group();
-  // faint emissive so the hands read even outside the beam
-  const metal = new THREE.MeshLambertMaterial({ color: 0x3a3a3e, emissive: 0x26262a });
-  const grip = new THREE.MeshLambertMaterial({ color: 0x4a2a16, emissive: 0x2e1a0c });
-  const skin = new THREE.MeshLambertMaterial({ color: 0x8a6a58, emissive: 0x3a2820 });
-  const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x1c1814, emissive: 0x141210 });
-  // revolver (right hand)
-  const gun = new THREE.Group();
-  gun.add(box(0.045, 0.05, 0.32, metal, 0, 0.035, -0.2)); // barrel
-  gun.add(box(0.012, 0.025, 0.02, metal, 0, 0.07, -0.34)); // front sight
-  const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.1, 8), metal);
-  drum.rotation.x = Math.PI / 2;
-  drum.position.set(0, 0.0, -0.02);
-  gun.add(drum);
-  gun.add(box(0.05, 0.08, 0.1, metal, 0, 0.01, 0.06));
-  const g2 = box(0.045, 0.15, 0.065, grip, 0, -0.08, 0.11);
-  g2.rotation.x = 0.35;
-  gun.add(g2);
-  gun.add(box(0.075, 0.09, 0.12, skin, 0, -0.1, 0.14)); // hand
-  gun.add(box(0.085, 0.085, 0.14, sleeveMat, 0, -0.12, 0.25)); // cuff
-  gun.position.set(0.2, -0.2, -0.55);
-  gun.scale.setScalar(0.65);
-  g.add(gun);
-  const flash = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: tex('glow'), color: 0xffcc66, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 })
-  );
-  flash.scale.set(0.35, 0.35, 0.35);
-  flash.position.set(0, 0.035, -0.42);
-  gun.add(flash);
-  // flashlight (left hand) — wide head pointing away from the camera
-  const torch = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.24, 8), metal);
-  body.rotation.x = Math.PI / 2;
-  torch.add(body);
-  const head = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.07, 8), metal);
-  head.rotation.x = Math.PI / 2; // +y (narrow end) -> +z, wide end forward
-  head.position.z = -0.15;
-  torch.add(head);
-  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.044, 10), new THREE.MeshBasicMaterial({ color: 0xfff2cc }));
-  lens.position.z = -0.187;
-  lens.rotation.y = Math.PI; // face forward, hidden from the player's own view
-  torch.add(lens);
-  torch.add(box(0.07, 0.08, 0.1, skin, 0, -0.03, 0.06));
-  torch.add(box(0.08, 0.08, 0.12, sleeveMat, 0, -0.05, 0.17));
-  torch.position.set(-0.22, -0.22, -0.5);
-  torch.scale.setScalar(0.65);
-  g.add(torch);
-  g.traverse((o) => {
-    if (o.isMesh) {
-      o.castShadow = false;
-      o.renderOrder = 10;
-    }
-  });
-  return { group: g, gun, torch, flash, lens };
 }
 
 export { box, pivot, glowSprite, L as lambert, B as basic };
