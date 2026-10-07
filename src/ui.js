@@ -17,7 +17,27 @@ import {
   waveChance,
   mouthsToFeed,
   appraisal,
+  TAG_NAMES,
 } from './run.js';
+import { CITIES, CITY, US_OUTLINE, LAKES, MAP_ASPECT, project, SIZE_NAMES, citySize } from './cities.js';
+
+// Where a city sits on the regional map canvas (and, as fractions, on the
+// overlaid markers). The map keeps the lower 48's real proportions.
+const RMAP = { W: 1280, H: 720, pad: 26 };
+{
+  let mh = RMAP.H - RMAP.pad * 2;
+  let mw = mh * MAP_ASPECT;
+  if (mw > RMAP.W - RMAP.pad * 2) {
+    mw = RMAP.W - RMAP.pad * 2;
+    mh = mw / MAP_ASPECT;
+  }
+  Object.assign(RMAP, { mw, mh, ox: (RMAP.W - mw) / 2, oy: (RMAP.H - mh) / 2 });
+}
+function mapXY(lat, lon) {
+  const [u, v] = project(lat, lon);
+  return [RMAP.ox + u * RMAP.mw, RMAP.oy + v * RMAP.mh];
+}
+const CLIMATE_TINT = { forest: '74,110,64', desert: '196,140,80', tundra: '200,214,226', plains: '190,170,96', swamp: '80,110,82' };
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -638,7 +658,7 @@ export class UI {
   }
 
   lootHint(L) {
-    const names = { scrap: 'scrap', coal: 'coal', medkit: 'med kits', ammo: 'ammo', weapon: 'weapons', trap: 'traps', blueprint: 'blueprints' };
+    const names = { scrap: 'scrap', coal: 'coal', medkit: 'med kits', ammo: 'ammo', weapon: 'weapons', trap: 'traps', blueprint: 'blueprints', food: 'food', battery: 'batteries' };
     return Object.entries(L.loot)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 4)
@@ -699,33 +719,43 @@ export class UI {
     const g = this.game;
     const run = g.run;
     const opts = run.region.options;
-    let markers = `<div class="camp-dot" style="left:22%;top:50%">◉</div><div class="loc" style="left:22%;top:62%;width:auto;height:auto;border-radius:3px;padding:0 6px;font-size:16px;pointer-events:none">${esc(run.locality.name)}</div>`;
+    const here = CITY[run.city];
+    const pct = (c) => {
+      const [x, y] = mapXY(c.lat, c.lon);
+      return `left:${((x / RMAP.W) * 100).toFixed(2)}%;top:${((y / RMAP.H) * 100).toFixed(2)}%`;
+    };
+    let markers = '';
+    if (here) markers += `<div class="camp-dot here" style="${pct(here)}" title="${esc(run.locality.name)}">◉</div>`;
     opts.forEach((o, i) => {
-      const x = 70 + o.dx * 40;
-      const y = 50 + (i - 1) * 28 + o.dy * 30;
-      markers += `<button class="loc ${this.panel.sel === 'r' + i ? 'sel' : ''}" style="left:${x}%;top:${y}%" data-act="rsel" data-i="${i}">${BIOMES[o.biome].icon}<span class="lbl">${esc(o.name)}</span></button>`;
+      const c = CITY[o.city];
+      markers += `<button class="loc city s${o.size} ${this.panel.sel === 'r' + i ? 'sel' : ''}" style="${pct(c)}" data-act="rsel" data-i="${i}">${BIOMES[o.biome].icon}<span class="lbl">${esc(c.name)}</span></button>`;
     });
-    const left = `<div class="mapwrap"><canvas id="regionMapCanvas" width="640" height="480"></canvas>${markers}</div>`;
-    let right = `<div class="box"><h3>Move the train</h3><div class="muted">Moving rerolls everything around you: new buildings, new survivors, new terrain. Untriggered traps are packed up and come with you.</div>`;
+    const left = `<div class="mapwrap us"><canvas id="regionMapCanvas" width="${RMAP.W}" height="${RMAP.H}"></canvas>${markers}</div>`;
+    let right = `<div class="box"><h3>Move the train</h3>`;
     const busy = run.survivors.some((s) => s.status === 'away');
     const i = this.panel.sel && String(this.panel.sel).startsWith('r') ? +String(this.panel.sel).slice(1) : null;
+    const cityLine = (c) => `${SIZE_NAMES[citySize(c)]} · pop. ${c.pop >= 1000 ? (c.pop / 1000).toFixed(1) + 'M' : c.pop + 'k'}${c.tags.length ? ' · ' + c.tags.map((t) => TAG_NAMES[t]).join(', ') : ''}`;
     if (i != null) {
       const o = opts[i];
+      const c = CITY[o.city];
       const b = BIOMES[o.biome];
-      right += `<h3 style="margin-top:8px">${b.icon} ${esc(o.name)}</h3><div class="muted">${b.name}</div>`;
+      right += `<h3 style="margin-top:8px">${b.icon} ${esc(o.name)}</h3><div class="muted">${b.name} · ${cityLine(c)}</div>`;
       right += `<div class="appraisal">${this.appraisalHtml(o.profile)}</div>`;
-      right += `<div>Coal needed: <b class="${run.coal >= o.coal ? 'good' : 'bad'}">${o.coal}</b> (you have ${run.coal})</div><div>Takes ${TRAVEL_HOURS} hours of daylight.</div>`;
+      right += `<div><b>${o.miles}</b> miles by rail · coal needed: <b class="${run.coal >= o.coal ? 'good' : 'bad'}">${o.coal}</b> (you have ${run.coal})</div><div>Takes ${TRAVEL_HOURS} hours of daylight.</div>`;
       const can = run.coal >= o.coal && run.phase === 'day' && run.hours >= TRAVEL_HOURS && !busy;
       right += `<button class="pbtn big" data-act="travel" data-i="${i}" ${can ? '' : 'disabled'}>Fire up the engine</button>`;
       if (busy) right += `<div class="bad">Wait for the survivors you sent out to come back.</div>`;
       else if (run.phase !== 'day' || run.hours < TRAVEL_HOURS) right += `<div class="bad">Not enough daylight to travel today.</div>`;
     } else {
-      right += `<div style="margin-top:8px">Pick a destination. You have <b>${run.coal}</b> coal.</div>`;
-      opts.forEach((o) => (right += `<div class="appraisal small"><b>${BIOMES[o.biome].icon} ${esc(o.name)}</b> · ◼ ${o.coal}<br>${this.appraisalHtml(o.profile)}</div>`));
+      right += `<div class="muted">Moving on means new buildings and new survivors. Untriggered traps are packed up and come with you; keys don't open anything in the next town.</div>`;
+      right += `<div style="margin-top:8px">Pick a destination. You have <b>${run.coal}</b> coal.</div><div class="ropts">`;
+      opts.forEach((o, k) => (right += `<div class="appraisal small" data-act="rsel" data-i="${k}"><b>${BIOMES[o.biome].icon} ${esc(o.name)}</b> · ${o.miles} mi · ◼ ${o.coal}<br>${this.appraisalHtml(o.profile)}</div>`));
+      right += `</div>`;
     }
-    right += `<div class="muted" style="margin-top:8px;font-size:17px">Here: ${esc(run.locality.name)} — ${this.appraisalHtml(run.locality.profile)}</div>`;
+    if (here) right += `<div class="muted" style="margin-top:8px;font-size:17px">Here: <b>${esc(run.locality.name)}</b> (${cityLine(here)}) — ${this.appraisalHtml(run.locality.profile)}</div>`;
+    right += `<div class="muted" style="font-size:16px">${run.route.length} ${run.route.length === 1 ? 'stop' : 'stops'} · ${(run.stats.miles || 0).toLocaleString()} miles travelled</div>`;
     right += `</div>`;
-    return `<div class="cols2"><div>${left}</div><div>${right}</div></div>`;
+    return `<div class="cols2 regional"><div>${left}</div><div>${right}</div></div>`;
   }
 
   drawRegionalMap() {
@@ -733,33 +763,158 @@ export class UI {
     if (!c) return;
     const ctx = c.getContext('2d');
     const run = this.game.run;
-    ctx.fillStyle = '#c8b48a';
-    ctx.fillRect(0, 0, 640, 480);
-    let seed = run.seed + run.localityCount * 31;
-    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-    for (let i = 0; i < 30; i++) {
-      ctx.fillStyle = ['rgba(60,90,50,0.22)', 'rgba(170,120,60,0.2)', 'rgba(170,190,210,0.3)'][i % 3];
+    const { W, H } = RMAP;
+    // the sea
+    ctx.fillStyle = '#7d8f8c';
+    ctx.fillRect(0, 0, W, H);
+    for (let y = 0; y < H; y += 6) {
+      ctx.fillStyle = `rgba(255,255,255,${0.02 + 0.02 * Math.sin(y * 0.21)})`;
+      ctx.fillRect(0, y, W, 2);
+    }
+    const path = (pts) => {
       ctx.beginPath();
-      ctx.ellipse(rnd() * 640, rnd() * 480, 30 + rnd() * 60, 20 + rnd() * 40, rnd() * 3, 0, Math.PI * 2);
+      pts.forEach(([lon, lat], k) => {
+        const [x, y] = mapXY(lat, lon);
+        if (k) ctx.lineTo(x, y);
+        else ctx.moveTo(x, y);
+      });
+      ctx.closePath();
+    };
+    // the land, tinted by climate around each city
+    ctx.save();
+    path(US_OUTLINE);
+    ctx.fillStyle = '#d6c49a';
+    ctx.fill();
+    ctx.clip();
+    for (const ct of CITIES) {
+      const [x, y] = mapXY(ct.lat, ct.lon);
+      const r = 120;
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, `rgba(${CLIMATE_TINT[ct.biome]},0.34)`);
+      gr.addColorStop(1, `rgba(${CLIMATE_TINT[ct.biome]},0)`);
+      ctx.fillStyle = gr;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // the Rockies
+    ctx.strokeStyle = 'rgba(90,70,50,0.28)';
+    ctx.lineWidth = 1.4;
+    for (let k = 0; k < 150; k++) {
+      const lat = 32 + ((k * 37) % 170) / 10;
+      const lon = -114 + 6 * Math.sin(lat * 0.45) + ((k * 53) % 70) / 10 - 2;
+      const [x, y] = mapXY(lat, lon);
+      ctx.beginPath();
+      ctx.moveTo(x - 6, y + 4);
+      ctx.lineTo(x, y - 4);
+      ctx.lineTo(x + 6, y + 4);
+      ctx.stroke();
+    }
+    // parallels and meridians
+    ctx.strokeStyle = 'rgba(70,50,30,0.12)';
+    ctx.lineWidth = 1;
+    for (let lat = 25; lat <= 50; lat += 5) {
+      ctx.beginPath();
+      ctx.moveTo(...mapXY(lat, -126));
+      ctx.lineTo(...mapXY(lat, -66));
+      ctx.stroke();
+    }
+    for (let lon = -125; lon <= -65; lon += 5) {
+      ctx.beginPath();
+      ctx.moveTo(...mapXY(24, lon));
+      ctx.lineTo(...mapXY(50, lon));
+      ctx.stroke();
+    }
+    ctx.restore();
+    for (const lake of LAKES) {
+      path(lake);
+      ctx.fillStyle = '#7d8f8c';
       ctx.fill();
     }
+    path(US_OUTLINE);
     ctx.strokeStyle = '#3a2a1a';
-    ctx.lineWidth = 3;
-    run.region.options.forEach((o, i) => {
-      const x = (0.7 + o.dx * 0.4) * 640;
-      const y = (0.5 + (i - 1) * 0.28 + o.dy * 0.3) * 480;
-      ctx.beginPath();
-      ctx.moveTo(0.22 * 640, 0.5 * 480);
-      ctx.bezierCurveTo(0.4 * 640, 0.5 * 480, 0.5 * 640, y, x, y);
-      ctx.stroke();
-    });
-    ctx.beginPath();
-    ctx.moveTo(0, 0.5 * 480);
-    ctx.lineTo(0.22 * 640, 0.5 * 480);
+    ctx.lineWidth = 2.5;
     ctx.stroke();
-    ctx.fillStyle = '#5a3a20';
-    ctx.font = '18px serif';
-    ctx.fillText(`Localities visited: ${run.stats.localities}`, 14, 26);
+    for (const lake of LAKES) {
+      path(lake);
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+    const here = CITY[run.city];
+    // rail lines to the next stops
+    ctx.setLineDash([10, 6]);
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(58,36,16,0.85)';
+    if (here)
+      for (const o of run.region.options) {
+        const c = CITY[o.city];
+        ctx.beginPath();
+        ctx.moveTo(...mapXY(here.lat, here.lon));
+        ctx.lineTo(...mapXY(c.lat, c.lon));
+        ctx.stroke();
+      }
+    ctx.setLineDash([]);
+    // the way the train came
+    if (run.route.length > 1) {
+      ctx.strokeStyle = '#a3170f';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      run.route.forEach((id, k) => {
+        const c = CITY[id];
+        const [x, y] = mapXY(c.lat, c.lon);
+        if (k) ctx.lineTo(x, y);
+        else ctx.moveTo(x, y);
+      });
+      ctx.stroke();
+    }
+    // every city, sized by population
+    const visited = new Set(run.route);
+    const optIds = new Set(run.region.options.map((o) => o.city));
+    ctx.font = '15px serif';
+    ctx.textAlign = 'left';
+    for (const ct of CITIES) {
+      const [x, y] = mapXY(ct.lat, ct.lon);
+      const r = 2.5 + citySize(ct) * 1.4;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = visited.has(ct.id) ? '#a3170f' : '#3a2a1a';
+      ctx.fill();
+      if (optIds.has(ct.id) || ct.id === run.city) continue;
+      if (citySize(ct) >= 3 || visited.has(ct.id)) {
+        ctx.fillStyle = visited.has(ct.id) ? 'rgba(120,20,10,0.9)' : 'rgba(40,26,12,0.75)';
+        ctx.fillText(ct.name, x + r + 3, y + 5);
+      }
+    }
+    if (here) {
+      const [x, y] = mapXY(here.lat, here.lon);
+      ctx.font = 'bold 17px serif';
+      const tw = ctx.measureText(here.name).width;
+      ctx.fillStyle = 'rgba(240,226,184,0.85)';
+      ctx.fillRect(x - tw / 2 - 4, y + 13, tw + 8, 20);
+      ctx.fillStyle = '#8a1208';
+      ctx.textAlign = 'center';
+      ctx.fillText(here.name, x, y + 29);
+      ctx.textAlign = 'left';
+    }
+    ctx.fillStyle = '#3a2410';
+    ctx.font = 'bold 26px serif';
+    ctx.fillText('THE UNITED STATES', RMAP.ox + 18, RMAP.oy + RMAP.mh - 14);
+    ctx.font = '17px serif';
+    ctx.fillText(`${run.route.length} stops · ${(run.stats.miles || 0).toLocaleString()} miles`, RMAP.ox + 18, RMAP.oy + RMAP.mh + 8);
+    // compass
+    const cx = W - 70;
+    const cy = H - 90;
+    ctx.strokeStyle = '#3a2410';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 34);
+    ctx.lineTo(cx, cy + 34);
+    ctx.moveTo(cx - 34, cy);
+    ctx.lineTo(cx + 34, cy);
+    ctx.stroke();
+    ctx.fillStyle = '#3a2410';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 18px serif';
+    ctx.fillText('N', cx, cy - 40);
+    ctx.textAlign = 'left';
   }
 
   // ------------------------------------------------------------ screens

@@ -4,6 +4,7 @@
 import { RNG } from './util.js';
 import { DAY_HOURS, BARRICADE, MAX_SURVIVORS } from './config.js';
 import { WEAPONS, AMMO, AMMO_ORDER, weaponStats, weaponPower, rollWeapon, ammoPickup } from './weapons.js';
+import { CITIES, CITY, cityLabel, miles, citySize } from './cities.js';
 
 const SAVE_KEY = 'dreaddepths.run.v2';
 const BEST_KEY = 'dreaddepths.bestNights';
@@ -52,66 +53,102 @@ export const BIOMES = {
       night: { zen: 0x03050c, sky: 0x070a12, fog: 0x080b12, hemiS: 0x4a5a80, hemiG: 0x181c28, sun: 0xa0b0e0, sunI: 0.24, hemiI: 0.38, fogD: 0.02 },
     },
   },
+  plains: {
+    name: 'Plains',
+    icon: '≋',
+    ground: 'prairie',
+    weather: 'dust',
+    clouds: 0.35,
+    cover: ['rock', 'bush', 'bush', 'car', 'stump', 'barrel', 'log', 'deadtree'],
+    backdrop: 0x6a6448,
+    tod: {
+      day: { zen: 0x4a78b0, sky: 0xa8b8c8, fog: 0xb8b4a0, hemiS: 0xe8ecf0, hemiG: 0x7a6a40, sun: 0xfff0d4, sunI: 1.8, hemiI: 1.05, fogD: 0.006 },
+      dusk: { zen: 0x2e2c56, sky: 0xc06a44, fog: 0x8a5038, hemiS: 0xffa070, hemiG: 0x4a2c1a, sun: 0xff8040, sunI: 1.05, hemiI: 0.6, fogD: 0.009 },
+      night: { zen: 0x02030a, sky: 0x06070e, fog: 0x05060a, hemiS: 0x3e4a6e, hemiG: 0x10100c, sun: 0x8a96c8, sunI: 0.18, hemiI: 0.3, fogD: 0.017 },
+    },
+  },
+  swamp: {
+    name: 'Swamp',
+    icon: '♒',
+    ground: 'marsh',
+    weather: 'rain',
+    clouds: 0.7,
+    cover: ['deadtree', 'deadtree', 'bush', 'bush', 'log', 'stump', 'car', 'rock'],
+    backdrop: 0x24301e,
+    tod: {
+      day: { zen: 0x5a7480, sky: 0x92a098, fog: 0x8a9488, hemiS: 0xc8d0c4, hemiG: 0x3a4628, sun: 0xfff0d0, sunI: 1.45, hemiI: 1.05, fogD: 0.011 },
+      dusk: { zen: 0x2c2c40, sky: 0x7a5a52, fog: 0x5a4a44, hemiS: 0xc89880, hemiG: 0x26241a, sun: 0xff9050, sunI: 0.85, hemiI: 0.6, fogD: 0.015 },
+      night: { zen: 0x020406, sky: 0x05080a, fog: 0x050806, hemiS: 0x3a4a5a, hemiG: 0x0a0c08, sun: 0x8090b0, sunI: 0.15, hemiI: 0.3, fogD: 0.024 },
+    },
+  },
 };
 export const BIOME_KEYS = Object.keys(BIOMES);
 
 // ---------------------------------------------------------------- locations
 export const LOCATION_TYPES = {
   gas: {
-    name: 'Gas Station', icon: '⛽', diff: [1, 2], hours: 2, size: 18, band: 10, rooms: [3, 4], room: [3, 5], lot: [12, 7], containers: [4, 6], survivor: 0.15,
+    name: 'Gas Station', icon: '⛽', floors: [1, 1], diff: [1, 2], hours: 2, size: 18, band: 10, rooms: [3, 4], room: [3, 5], lot: [12, 7], containers: [4, 6], survivor: 0.15,
     theme: { wall: 'tile', wall2: 'concrete', floor: 'linoleum', ceil: 'ceiling' }, yard: 'asphalt',
-    loot: { scrap: 3, coal: 2.5, medkit: 0.6, ammo: 1.6, weapon: 0.7, trap: 1.5, blueprint: 0.12, food: 2.2 },
+    loot: { scrap: 3, coal: 2.5, medkit: 0.6, ammo: 1.6, weapon: 0.7, trap: 1.5, blueprint: 0.12, food: 2.2, battery: 1.4 },
     traps: { kerosene: 5, bear: 1, tripwire: 1, mine: 0 }, cats: ['melee', 'pistol', 'shotgun'], ammo: ['pistol', 'shells', 'fuel'],
     names: ['Gas-N-Go', 'Pump & Save', 'Route 9 Fuel', 'Stop-N-Fill', 'Last Chance Gas', 'Sunoco Mart', 'Hi-Way Fuel'],
   },
   home: {
-    name: 'House', icon: '⌂', diff: [1, 2], hours: 2, size: 18, band: 11, rooms: [4, 6], room: [2, 4], lot: [9, 6], containers: [5, 8], survivor: 0.3,
+    name: 'House', icon: '⌂', floors: [1, 2], diff: [1, 2], hours: 2, size: 18, band: 11, rooms: [4, 6], room: [2, 4], lot: [9, 6], containers: [5, 8], survivor: 0.3,
     theme: { wall: 'wallpaper', wall2: 'wood', floor: 'woodFloor', ceil: 'ceiling' }, yard: 'biome',
-    loot: { scrap: 2, coal: 0.6, medkit: 2, ammo: 2, weapon: 1.4, trap: 0.7, blueprint: 0.08, food: 2.6 },
+    loot: { scrap: 2, coal: 0.6, medkit: 2, ammo: 2, weapon: 1.4, trap: 0.7, blueprint: 0.08, food: 2.6, battery: 1.2 },
     traps: { bear: 3, kerosene: 1, tripwire: 1, mine: 0 }, cats: ['melee', 'pistol', 'shotgun', 'rifle', 'bow'], ammo: ['pistol', 'shells', 'arrows', 'rifle'],
     suffix: ['House', 'Farmhouse', 'Cottage', 'Residence', 'Cabin'],
   },
   apartment: {
-    name: 'Apartment Block', icon: '▥', diff: [2, 4], hours: 4, size: 32, rooms: [10, 14], room: [3, 6], lot: [12, 6], containers: [9, 14], survivor: 0.5,
+    name: 'Apartment Block', icon: '▥', floors: [2, 3], diff: [2, 4], hours: 4, size: 32, rooms: [10, 14], room: [3, 6], lot: [12, 6], containers: [9, 14], survivor: 0.5,
     theme: { wall: 'wallpaper', wall2: 'brick', floor: 'carpet', ceil: 'ceiling' }, yard: 'asphalt',
-    loot: { scrap: 2.2, coal: 0.7, medkit: 1.6, ammo: 2, weapon: 1.4, trap: 0.8, blueprint: 0.15, food: 2.4 },
+    loot: { scrap: 2.2, coal: 0.7, medkit: 1.6, ammo: 2, weapon: 1.4, trap: 0.8, blueprint: 0.15, food: 2.4, battery: 1.0 },
     traps: { bear: 2, kerosene: 1, tripwire: 1, mine: 0 }, cats: ['melee', 'pistol', 'smg', 'shotgun', 'rifle', 'bow', 'thrown'], ammo: ['pistol', 'shells', 'rifle', 'fuel'],
     suffix: ['Apartments', 'Towers', 'Court', 'Flats'],
   },
   office: {
-    name: 'Office Building', icon: '▤', diff: [2, 3], hours: 3, size: 30, rooms: [7, 10], room: [4, 7], lot: [14, 7], containers: [7, 11], survivor: 0.25,
+    name: 'Office Building', icon: '▤', floors: [2, 3], diff: [2, 3], hours: 3, size: 30, rooms: [7, 10], room: [4, 7], lot: [14, 7], containers: [7, 11], survivor: 0.25,
     theme: { wall: 'concrete', wall2: 'wallpaper', floor: 'carpet', ceil: 'ceiling' }, yard: 'asphalt',
-    loot: { scrap: 3.6, coal: 0.5, medkit: 1, ammo: 1.2, weapon: 0.9, trap: 0.5, blueprint: 0.45, food: 0.8 },
+    loot: { scrap: 3.6, coal: 0.5, medkit: 1, ammo: 1.2, weapon: 0.9, trap: 0.5, blueprint: 0.45, food: 0.8, battery: 1.1 },
     traps: { tripwire: 2, bear: 1, kerosene: 1, mine: 0 }, cats: ['melee', 'pistol', 'smg'], ammo: ['pistol', 'shells'],
     suffix: ['Offices', 'Tower', 'Plaza', 'Insurance', 'Tech Park'],
   },
   warehouse: {
-    name: 'Warehouse', icon: '▦', diff: [2, 4], hours: 3, size: 30, rooms: [3, 5], room: [6, 10], lot: [14, 7], containers: [8, 12], survivor: 0.2,
+    name: 'Warehouse', icon: '▦', floors: [1, 1], diff: [2, 4], hours: 3, size: 30, rooms: [3, 5], room: [6, 10], lot: [14, 7], containers: [8, 12], survivor: 0.2,
     theme: { wall: 'sheetMetal', wall2: 'concrete', floor: 'concrete', ceil: 'metal' }, yard: 'concreteSlab',
-    loot: { scrap: 4.5, coal: 3, medkit: 0.6, ammo: 1.4, weapon: 0.9, trap: 2, blueprint: 0.7, food: 2.0 },
+    loot: { scrap: 4.5, coal: 3, medkit: 0.6, ammo: 1.4, weapon: 0.9, trap: 2, blueprint: 0.7, food: 2.0, battery: 1.0 },
     traps: { bear: 2, tripwire: 2, kerosene: 3, mine: 1 }, cats: ['melee', 'shotgun', 'rifle', 'smg', 'thrown'], ammo: ['shells', 'rifle', 'fuel', 'pistol', 'explosives'],
     suffix: ['Warehouse', 'Depot', 'Storage', 'Freight', 'Distribution'],
   },
   police: {
-    name: 'Police Station', icon: '★', diff: [3, 4], hours: 3, size: 28, rooms: [7, 9], room: [3, 6], lot: [13, 7], containers: [7, 10], survivor: 0.3,
+    name: 'Police Station', icon: '★', floors: [1, 2], diff: [3, 4], hours: 3, size: 28, rooms: [7, 9], room: [3, 6], lot: [13, 7], containers: [7, 10], survivor: 0.3,
     theme: { wall: 'concrete', wall2: 'tile', floor: 'linoleum', ceil: 'ceiling' }, yard: 'asphalt',
-    loot: { scrap: 1.6, coal: 0.4, medkit: 1.2, ammo: 3.6, weapon: 2.6, trap: 1.2, blueprint: 0.3, food: 0.8 },
+    loot: { scrap: 1.6, coal: 0.4, medkit: 1.2, ammo: 3.6, weapon: 2.6, trap: 1.2, blueprint: 0.3, food: 0.8, battery: 0.8 },
     traps: { bear: 3, tripwire: 1, mine: 0.5, kerosene: 0.5 }, cats: ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'melee', 'thrown'], ammo: ['pistol', 'shells', 'rifle', 'explosives'],
     suffix: ['Police Station', 'Precinct', 'Sheriff\'s Office', 'County Jail'],
   },
   hospital: {
-    name: 'Hospital', icon: '✚', diff: [3, 5], hours: 4, size: 34, rooms: [11, 15], room: [3, 6], lot: [14, 7], containers: [9, 14], survivor: 0.55,
+    name: 'Hospital', icon: '✚', floors: [2, 3], diff: [3, 5], hours: 4, size: 34, rooms: [11, 15], room: [3, 6], lot: [14, 7], containers: [9, 14], survivor: 0.55,
     theme: { wall: 'tile', wall2: 'concrete', floor: 'linoleum', ceil: 'ceiling' }, yard: 'asphalt',
-    loot: { scrap: 2, coal: 0.4, medkit: 4.5, ammo: 1.2, weapon: 0.9, trap: 0.6, blueprint: 0.25, food: 1.0 },
+    loot: { scrap: 2, coal: 0.4, medkit: 4.5, ammo: 1.2, weapon: 0.9, trap: 0.6, blueprint: 0.25, food: 1.0, battery: 0.6 },
     traps: { bear: 1, tripwire: 2, kerosene: 1, mine: 0 }, cats: ['melee', 'pistol', 'smg'], ammo: ['pistol', 'shells'],
     suffix: ['Hospital', 'Medical Center', 'Clinic', 'General'],
   },
   military: {
-    name: 'Military Base', icon: '✪', diff: [4, 5], hours: 5, size: 36, rooms: [8, 11], room: [4, 8], lot: [14, 8], containers: [10, 14], survivor: 0.3,
+    name: 'Military Base', icon: '✪', floors: [1, 2], diff: [4, 5], hours: 5, size: 36, rooms: [8, 11], room: [4, 8], lot: [14, 8], containers: [10, 14], survivor: 0.3,
     theme: { wall: 'concrete', wall2: 'sheetMetal', floor: 'concrete', ceil: 'metal' }, yard: 'dirt',
-    loot: { scrap: 2.4, coal: 1.2, medkit: 1.4, ammo: 3.6, weapon: 2.8, trap: 2.2, blueprint: 1.4, food: 1.6 },
+    loot: { scrap: 2.4, coal: 1.2, medkit: 1.4, ammo: 3.6, weapon: 2.8, trap: 2.2, blueprint: 1.4, food: 1.6, battery: 1.1 },
     traps: { mine: 4, bear: 1, tripwire: 1, kerosene: 1 }, cats: ['rifle', 'sniper', 'lmg', 'launcher', 'thrown', 'smg', 'shotgun'], ammo: ['rifle', 'explosives', 'shells', 'pistol'],
     names: ['Fort Vail', 'Camp Harlow', 'Outpost Kilo', 'Firebase Echo', 'Fort Tran', 'Depot 51', 'Camp Ridgeback'],
+  },
+  // only the downtowns of real cities have them
+  skyscraper: {
+    name: 'Skyscraper', icon: '▮', floors: [3, 4], diff: [3, 5], hours: 5, size: 30, rooms: [7, 10], room: [4, 7], lot: [16, 8], containers: [10, 15], survivor: 0.45,
+    theme: { wall: 'concrete', wall2: 'wallpaper', floor: 'carpet', ceil: 'ceiling' }, yard: 'concreteSlab',
+    loot: { scrap: 3.4, coal: 0.4, medkit: 1.6, ammo: 1.8, weapon: 1.5, trap: 0.6, blueprint: 0.6, food: 1.2, battery: 0.9 },
+    traps: { tripwire: 2, bear: 1, kerosene: 1, mine: 0.3 }, cats: ['melee', 'pistol', 'smg', 'shotgun', 'rifle', 'sniper'], ammo: ['pistol', 'shells', 'rifle'],
+    suffix: ['Tower', 'Center', 'Plaza', 'Building', 'Trust Tower', 'Financial Center'],
   },
 };
 export const LOCATION_KEYS = Object.keys(LOCATION_TYPES);
@@ -133,9 +170,10 @@ const AFFINITY = {
   police: { weapons: 1.0, ammo: 0.9 },
   hospital: { medicine: 1.2, survivors: 0.4 },
   military: { weapons: 1.1, ammo: 1.0 },
+  skyscraper: { scrap: 0.8, survivors: 0.5, weapons: 0.3 },
 };
 // Which profile entry scales each kind of loot.
-const LOOT_KEY = { scrap: 'scrap', coal: 'coal', medkit: 'medicine', ammo: 'ammo', weapon: 'weapons', food: 'food' };
+const LOOT_KEY = { scrap: 'scrap', coal: 'coal', medkit: 'medicine', ammo: 'ammo', weapon: 'weapons', food: 'food', battery: 'scrap' };
 
 export function makeProfile(rng, index, opts = {}) {
   const mult = {};
@@ -251,6 +289,39 @@ export function makeSurvivor(run, rng, level) {
   return s;
 }
 
+const DOG_NAMES = ['Rex', 'Bear', 'Scout', 'Duke', 'Luna', 'Maggie', 'Rocco', 'Bandit', 'Ziggy', 'Sadie', 'Hank', 'Ghost', 'Tank', 'Juno', 'Biscuit', 'Ranger', 'Pepper', 'Moose'];
+const DOG_BREEDS = [
+  { breed: 'German Shepherd', coat: 0x6a4a2a, coat2: 0x1e1612, size: 1.0 },
+  { breed: 'Labrador', coat: 0xc8a060, coat2: 0xb08850, size: 0.95 },
+  { breed: 'Black Lab', coat: 0x1c1a18, coat2: 0x262220, size: 0.95 },
+  { breed: 'Pit Bull', coat: 0x8a8078, coat2: 0xe0d8d0, size: 0.85 },
+  { breed: 'Husky', coat: 0x7a7e86, coat2: 0xe8e8ea, size: 0.95 },
+  { breed: 'Rottweiler', coat: 0x16120e, coat2: 0x8a4a20, size: 1.05 },
+  { breed: 'Mutt', coat: 0x7a5a3a, coat2: 0xd0b890, size: 0.85 },
+];
+
+// A dog: fast, bites hard, can't carry a gun and won't go scavenging alone.
+export function makeDog(run, rng, level) {
+  const b = rng.pick(DOG_BREEDS);
+  const s = {
+    id: run.nextSurvivorId++,
+    name: rng.pick(DOG_NAMES),
+    dog: true,
+    level,
+    xp: 0,
+    hpBase: Math.round(rng.int(42, 58) * b.size),
+    speedBase: rng.range(5.2, 6.0),
+    stamBase: rng.int(110, 140),
+    weapon: null,
+    status: 'found',
+    kills: 0,
+    look: { breed: b.breed, coat: b.coat, coat2: b.coat2, size: b.size },
+  };
+  s.hp = survivorMaxHp(s);
+  return s;
+}
+export const DOG_BITE = (s) => 16 + 3 * (s.level - 1);
+
 // ---------------------------------------------------------------- weapons inventory
 export function addWeapon(run, id) {
   const inst = { uid: run.nextUid++, id, up: {}, mag: 0 };
@@ -280,7 +351,7 @@ export function removeWeapon(run, uid) {
 // ---------------------------------------------------------------- new run
 export function newRun(seed = (Math.random() * 0xffffffff) >>> 0) {
   const run = {
-    version: 3,
+    version: 4,
     seed,
     day: 1,
     hours: DAY_HOURS,
@@ -289,13 +360,18 @@ export function newRun(seed = (Math.random() * 0xffffffff) >>> 0) {
     coal: 2,
     medkits: 2,
     food: 6,
+    batteries: 2,
+    keys: [],
+    notes: [],
+    city: null,
+    route: [],
     ammo: Object.fromEntries(AMMO_ORDER.map((k) => [k, 0])),
     traps: { bear: 2, mine: 0, tripwire: 0, kerosene: 0 },
     blueprints: { mg: 0, missile: 0, artillery: 0 },
     weapons: [],
     nextUid: 1,
     loadout: { primary: null, secondary: null },
-    player: { level: 1, xp: 0, hp: playerMaxHp(1), kills: 0 },
+    player: { level: 1, xp: 0, hp: playerMaxHp(1), kills: 0, battery: 1 },
     survivors: [],
     nextSurvivorId: 1,
     barricade: { level: 0, hp: BARRICADE.baseHp },
@@ -305,7 +381,7 @@ export function newRun(seed = (Math.random() * 0xffffffff) >>> 0) {
     wavesFaced: 0,
     expeditions: [],
     report: [],
-    stats: { kills: 0, waves: 0, quietNights: 0, localities: 1, searched: 0, recruited: 0, lost: 0 },
+    stats: { kills: 0, waves: 0, quietNights: 0, localities: 1, searched: 0, recruited: 0, lost: 0, miles: 0 },
   };
   run.ammo.pistol = 60;
   const g = addWeapon(run, 'glock');
@@ -313,24 +389,60 @@ export function newRun(seed = (Math.random() * 0xffffffff) >>> 0) {
   run.loadout.primary = g.uid;
   run.loadout.secondary = k.uid;
   const rng = new RNG(seed);
-  run.locality = generateLocality(run, rng.pick(BIOME_KEYS), makeProfile(rng, 0, { danger: rng.int(0, 1) }));
-  run.region = { options: regionalOptions(run) };
+  // the run starts somewhere small and fairly quiet
+  const start = rng.pick(CITIES.filter((c) => c.pop <= 600 && !c.tags.includes('military')));
+  arriveAt(run, start, cityProfile(start, rng));
+  // enough coal for the nearest hop
+  run.coal = Math.max(2, Math.min(...run.region.options.map((o) => o.coal)));
   return run;
 }
 
 export const barricadeMax = (run) => BARRICADE.baseHp + BARRICADE.perLevel * run.barricade.level;
 export const waveChance = (run) => Math.min(1, 0.5 + 0.01 * (run.day - 1));
 
-// ---------------------------------------------------------------- localities
-const LOC_NAMES = {
-  forest: { a: ['Pine', 'Elk', 'Cedar', 'Raven', 'Moss', 'Fern', 'Black Oak', 'Hemlock', 'Bear'], b: ['Hollow', 'Creek', 'Crossing', 'Junction', 'Ridge', 'Falls', 'Siding'] },
-  desert: { a: ['Dust', 'Red Mesa', 'Sidewinder', 'Bone', 'Sun', 'Coyote', 'Scorch', 'Dry Gulch', 'Vulture'], b: ['Flats', 'Wells', 'Junction', 'Bluff', 'Station', 'Basin', 'Siding'] },
-  tundra: { a: ['Frost', 'Whiteout', 'Ice', 'Wolf', 'Glacier', 'Pale', 'Rime', 'North', 'Caribou'], b: ['Point', 'Pass', 'Junction', 'Reach', 'Station', 'Ridge', 'Siding'] },
+// ---------------------------------------------------------------- cities
+// What a city is likely to hold follows from what it really is: its size
+// (metro population), what it's known for (farms, coal, industry, hospitals,
+// bases, a port) and a reputation of its own, plus a little luck per visit.
+const SIZE_MULT = {
+  survivors: [0.7, 0.95, 1.2, 1.5],
+  weapons: [0.85, 1, 1.12, 1.25],
+  ammo: [0.9, 1, 1.1, 1.2],
+  food: [1.5, 1.15, 0.9, 0.7],
+  medicine: [0.6, 0.9, 1.15, 1.4],
+  coal: [1.4, 1.1, 0.9, 0.75],
+  scrap: [0.8, 1, 1.2, 1.45],
 };
+const TAG_MULT = {
+  farm: { food: 1.7 },
+  coal: { coal: 2.0 },
+  industry: { scrap: 1.6, coal: 1.15 },
+  medical: { medicine: 1.8 },
+  military: { weapons: 1.7, ammo: 1.7 },
+  port: { food: 1.2, scrap: 1.2 },
+};
+export const TAG_NAMES = { farm: 'farm country', coal: 'coal country', industry: 'industrial', medical: 'hospitals', military: 'military bases', port: 'port' };
 
-function localityName(rng, biome) {
-  const n = LOC_NAMES[biome];
-  return `${rng.pick(n.a)} ${rng.pick(n.b)}`;
+function hashStr(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+// Danger follows the size of the place: more people, more dead.
+export const cityDanger = (c) => (c.pop < 250 ? 0 : c.pop < 1000 ? 1 : c.pop < 4000 ? 2 : 3);
+
+export function cityProfile(city, rng) {
+  const size = citySize(city);
+  const rep = new RNG(hashStr(city.id));
+  const mult = {};
+  for (const k of RES_KEYS) {
+    let m = SIZE_MULT[k][size];
+    for (const t of city.tags) m *= TAG_MULT[t][k] || 1;
+    m *= Math.exp(rep.range(-0.18, 0.18)) * Math.exp(rng.range(-0.12, 0.12));
+    mult[k] = Math.round(Math.max(0.3, Math.min(2.4, m)) * 100) / 100;
+  }
+  return { mult, danger: cityDanger(city) };
 }
 
 function pickWeighted(rng, weights) {
@@ -344,38 +456,130 @@ function pickWeighted(rng, weights) {
   return Object.keys(weights)[0];
 }
 
-export function generateLocality(run, biome, profile) {
+// The kinds of buildings a place has, by size: towns are houses and gas
+// stations, metropolises are apartment blocks, offices and skyscrapers.
+const TYPE_BASE = [
+  { gas: 4, home: 6, apartment: 0.6, office: 0.6, warehouse: 2, police: 1, hospital: 0.5, skyscraper: 0 },
+  { gas: 3, home: 4, apartment: 2, office: 1.6, warehouse: 2, police: 1.4, hospital: 1.2, skyscraper: 0 },
+  { gas: 2.4, home: 3, apartment: 3, office: 2.4, warehouse: 2, police: 1.6, hospital: 1.6, skyscraper: 0.7 },
+  { gas: 1.6, home: 1.6, apartment: 3.6, office: 3, warehouse: 1.8, police: 1.8, hospital: 2, skyscraper: 2.4 },
+];
+const TAG_TYPES = { farm: { home: 1.3, gas: 1.2 }, industry: { warehouse: 1.6 }, medical: { hospital: 1.3 }, port: { warehouse: 1.3 } };
+
+export function generateLocality(run, city, profile) {
   run.localityCount++;
   const index = run.localityCount;
   const seed = (Math.random() * 0xffffffff) >>> 0;
   const rng = new RNG(seed);
-  profile = profile || makeProfile(rng, index);
-  const loc = { seed, biome, index, profile, name: localityName(rng, biome), locations: [] };
-  const n = rng.int(7, 10);
-  const placed = [];
-  const typeW = {};
-  const base = { gas: 3, home: 4, apartment: 2.4, office: 2, warehouse: 2, police: 1.5, hospital: 1.4, military: 0.5 + 0.15 * index };
-  for (const t in base) {
-    let w = base[t];
-    for (const k in AFFINITY[t]) w *= Math.pow(profile.mult[k], AFFINITY[t][k] * 1.6);
-    typeW[t] = w * rng.range(0.8, 1.25);
+  const size = citySize(city);
+  profile = profile || cityProfile(city, rng);
+  const loc = { seed, biome: city.biome, city: city.id, size, index, profile, name: cityLabel(city), locations: [] };
+  const n = [rng.int(5, 7), rng.int(7, 9), rng.int(9, 11), rng.int(11, 13)][size];
+  const typeW = { ...TYPE_BASE[size] };
+  typeW.military = city.tags.includes('military') ? 1.6 : Math.min(0.45, 0.1 + 0.03 * index);
+  for (const t of city.tags) for (const k in TAG_TYPES[t] || {}) typeW[k] *= TAG_TYPES[t][k];
+  for (const t in typeW) {
+    for (const k in AFFINITY[t]) typeW[t] *= Math.pow(profile.mult[k], AFFINITY[t][k]);
+    typeW[t] *= rng.range(0.8, 1.25);
   }
+  const types = [];
+  for (let i = 0; i < n; i++) types.push(pickWeighted(rng, typeW));
+  // what a place is famous for is there to be found
+  const ensure = (t, i) => {
+    if (!types.includes(t)) types[i] = t;
+  };
+  if (size === 3) ensure('skyscraper', n - 1);
+  if (city.tags.includes('military') && rng.chance(0.85)) ensure('military', n - 2);
+  if (city.tags.includes('medical')) ensure('hospital', n - 3);
+  // the first two of a run are quick, nearby searches so a fresh camp has options
+  if (index === 1) {
+    types[0] = 'home';
+    types[1] = 'gas';
+  }
+  const placed = [];
+  const gap = n > 10 ? 0.12 : 0.14;
   const used = new Set();
   for (let i = 0; i < n; i++) {
     let x = 0;
     let y = 0;
-    for (let a = 0; a < 60; a++) {
+    for (let a = 0; a < 80; a++) {
       x = rng.range(0.08, 0.92);
       y = rng.range(0.1, 0.9);
       if (Math.hypot(x - 0.5, y - 0.5) < 0.16) continue;
-      if (placed.every((p) => Math.hypot(p.x - x, p.y - y) > 0.14)) break;
+      if (placed.every((p) => Math.hypot(p.x - x, p.y - y) > gap)) break;
     }
     placed.push({ x, y });
-    // the first two are always quick, nearby searches so a fresh camp has options
-    const type = i === 0 && index === 1 ? 'home' : i === 1 && index === 1 ? 'gas' : pickWeighted(rng, typeW);
-    loc.locations.push(generateLocation(run, rng, type, index, profile, x, y, used));
+    loc.locations.push(generateLocation(run, rng, types[i], index, profile, x, y, used));
   }
+  addLocksAndNotes(rng, loc);
   return loc;
+}
+
+// ---------------------------------------------------------------- keys, locked gates, notes
+const VAULTS = {
+  gas: 'stockroom cage',
+  home: 'gun safe room',
+  apartment: 'super\'s storage cage',
+  office: 'server room',
+  warehouse: 'secure cage',
+  police: 'evidence locker',
+  hospital: 'pharmacy',
+  military: 'armory',
+  skyscraper: 'executive vault',
+};
+const KEY_HINTS = [
+  (k, v) => `Whoever reads this — the key to the ${v} is at ${k}. I couldn't get back for it.`,
+  (k, v) => `Locked the ${v} and ran. Spare key's at ${k}, top drawer. — M.`,
+  (k, v) => `DON'T lose the key again. It stays at ${k}. The ${v} stays shut.`,
+  (k, v) => `Dad hid the ${v} key at ${k}. Said nobody would think to look there.`,
+  (k, v) => `Shift notes: ${v} key moved to ${k} after the evacuation order.`,
+];
+const FLAVOR_NOTES = [
+  'Day 9. They come when the lights are on. Keep the lights off.',
+  'Mom — we went to the train yard. Please follow us. Please.',
+  'If you\'re reading this, the stairwell on the east side is clear. Was clear.',
+  'Ran out of insulin today. Going to try the pharmacy downtown.',
+  'They can smell blood. Don\'t bleed. Ha.',
+  'Grocery list: bread, batteries, BATTERIES, shotgun shells, more batteries.',
+  'Fire drill is cancelled until further notice. — Management',
+  'The radio says the trains still run west. I don\'t believe it.',
+  'Sorry about the door. We needed the wood.',
+  'Dog food on the bottom shelf. Leave some for the next one.',
+  'I heard them on the floor above all night. Scratching.',
+  'Happy birthday Ellie. Daddy loves you. We\'ll celebrate when this is over.',
+  'Quarantine checkpoint moved to the stadium. Bring ID.',
+  'Don\'t go in the basement. Just don\'t.',
+];
+
+function addLocksAndNotes(rng, loc) {
+  const L = loc.locations;
+  const lockCount = loc.size >= 2 ? (rng.chance(0.75) ? 2 : 1) : rng.chance(0.75) ? 1 : 0;
+  const cands = rng.shuffle(L.filter((l) => l.type !== 'gas'));
+  for (let i = 0; i < lockCount && i < cands.length; i++) {
+    const lock = cands[i];
+    const keyAt = rng.pick(L.filter((l) => l !== lock && !l.key));
+    if (!keyAt) break;
+    const vault = VAULTS[lock.type];
+    const LT = LOCATION_TYPES[lock.type];
+    // the vault holds the good stuff
+    const w = { weapon: 3, ammo: 2.2, medkit: 1.6, blueprint: 1.2, battery: 0.8, scrap: 1 };
+    const boxes = [];
+    for (let k = rng.int(2, 3); k > 0; k--) {
+      const c = rollContainer(rng, LT, Math.min(6, lock.difficulty + 2), w, loc.profile);
+      boxes.push(c.length ? c : [{ k: 'scrap', n: rng.int(20, 40) }]);
+    }
+    lock.lock = { id: lock.id, vault, keyAt: keyAt.id, boxes, opened: false, seen: false, hint: false };
+    keyAt.key = { opens: lock.id, label: `${lock.name} key` };
+    const text = rng.pick(KEY_HINTS)(keyAt.name, vault);
+    // usually there's a note at the gate itself; sometimes it's somewhere else
+    const r = rng.next();
+    if (r < 0.7) lock.lock.note = text;
+    else if (r < 0.92) {
+      const other = rng.pick(L.filter((l) => l !== lock && l !== keyAt)) || keyAt;
+      (other.notes = other.notes || []).push({ text, hint: lock.id });
+    }
+  }
+  for (const l of L) if (rng.chance(0.45)) (l.notes = l.notes || []).push({ text: rng.pick(FLAVOR_NOTES) });
 }
 
 function generateLocation(run, rng, type, index, profile, x, y, usedNames) {
@@ -403,9 +607,11 @@ function generateLocation(run, rng, type, index, profile, x, y, usedNames) {
     difficulty,
     hours,
     seed: (rng.next() * 0xffffffff) >>> 0,
+    floors: rng.int(L.floors[0], L.floors[1]),
     searched: false,
     containers: [],
     survivors: [],
+    batteries: rng.chance(0.75) ? rng.int(1, 3) : 0,
   };
   // loot leans the way the region does, with noise so no building is a sure thing
   const weights = {};
@@ -420,6 +626,9 @@ function generateLocation(run, rng, type, index, profile, x, y, usedNames) {
     const count = (type === 'apartment' || type === 'hospital') && rng.chance(0.3 * profile.mult.survivors) ? 2 : 1;
     for (let k = 0; k < count; k++) out.survivors.push(makeSurvivor(run, rng, rng.int(1, 1 + Math.ceil(difficulty / 2) + Math.floor(index / 4))));
   }
+  // strays hole up in homes and garages; police and army dogs stay near their posts
+  const dogChance = { home: 0.14, gas: 0.1, warehouse: 0.12, police: 0.2, military: 0.18 }[type] ?? 0.06;
+  if (rng.chance(dogChance * 0.85 * Math.sqrt(profile.mult.survivors))) out.survivors.push(makeDog(run, rng, rng.int(1, 1 + Math.ceil(difficulty / 2))));
   return out;
 }
 
@@ -455,6 +664,9 @@ function rollContainer(rng, L, d, weights, profile) {
       case 'trap':
         items.push({ k: 'trap', t: pickWeighted(rng, L.traps), n: rng.chance(0.3) ? 2 : 1 });
         break;
+      case 'battery':
+        items.push({ k: 'battery', n: rng.chance(0.3) ? 2 : 1 });
+        break;
       case 'blueprint': {
         const mil = L === LOCATION_TYPES.military;
         items.push({ k: 'blueprint', t: pickWeighted(rng, { mg: mil ? 0.4 : 0.68, missile: mil ? 0.38 : 0.24, artillery: mil ? 0.22 : 0.08 }) });
@@ -476,6 +688,8 @@ export function describeItem(it) {
       return `${it.n} food`;
     case 'medkit':
       return it.n > 1 ? `${it.n} med kits` : 'a med kit';
+    case 'battery':
+      return it.n > 1 ? `${it.n} batteries` : 'a battery';
     case 'ammo':
       return `${it.n} ${AMMO[it.t].name.toLowerCase()}`;
     case 'weapon':
@@ -554,6 +768,9 @@ export function grantItem(run, it) {
     case 'medkit':
       run.medkits += it.n;
       break;
+    case 'battery':
+      run.batteries += it.n;
+      break;
     case 'ammo':
       run.ammo[it.t] = (run.ammo[it.t] || 0) + it.n;
       break;
@@ -573,6 +790,15 @@ export const minSearchHours = (run) => {
   const open = run.locality.locations.filter((l) => !l.searched && !l.claimed);
   return open.length ? Math.min(...open.map((l) => l.hours)) : Infinity;
 };
+
+// A searched place is done with, unless a locked gate is still waiting for
+// its key: then it can be searched again.
+export function finishSearch(loc) {
+  if (loc.lock && !loc.lock.opened) {
+    loc.visited = true;
+    loc.searched = false;
+  } else loc.searched = true;
+}
 
 // ---------------------------------------------------------------- expeditions
 export function expeditionChance(run, s, loc) {
@@ -605,6 +831,16 @@ export function resolveExpeditions(run) {
         got.push(`survivor ${ns.name}`);
       }
       loc.survivors = [];
+      if (loc.key && !run.keys.includes(loc.key.opens)) {
+        run.keys.push(loc.key.opens);
+        got.push(`the ${loc.key.label}`);
+      }
+      if (loc.lock && !loc.lock.opened && run.keys.includes(loc.lock.id)) {
+        loc.lock.opened = true;
+        for (const c of loc.lock.boxes) items.push(...grantLoot(run, c, L.ammo));
+        got.length = 0;
+        got.push(...summarizeItems(items));
+      }
       grantXp(s, 4 + loc.difficulty * 3);
       s.hp = Math.max(1, Math.round(s.hp - Math.random() * survivorMaxHp(s) * 0.25 * loc.difficulty * 0.4));
       s.status = 'camp';
@@ -617,7 +853,7 @@ export function resolveExpeditions(run) {
       if (inst) removeWeapon(run, inst.uid);
       lines.push({ kind: 'bad', text: `${s.name} never came back from ${loc.name}${inst ? `. The ${WEAPONS[inst.id].name} is gone with them` : ''}.` });
     }
-    loc.searched = true;
+    finishSearch(loc);
     loc.claimed = false;
     run.stats.searched++;
   }
@@ -716,28 +952,39 @@ export function waveComposition(run) {
 }
 
 // ---------------------------------------------------------------- regional map
+// The next stops are real cities near this one: the closest places the
+// train hasn't been, plus a longer haul to a bigger city when there is one.
+// Coal is set by the real distance.
+export const coalFor = (mi) => Math.max(2, Math.round(mi / 100));
+
+function cityOption(run, city, rng, from) {
+  const mi = Math.round(miles(from, city));
+  const profile = cityProfile(city, rng);
+  return { city: city.id, biome: city.biome, name: cityLabel(city), miles: mi, coal: coalFor(mi), size: citySize(city), profile, appraisal: appraisal(profile) };
+}
+
 export function regionalOptions(run) {
   const rng = new RNG((Math.random() * 0xffffffff) >>> 0);
-  const biomes = rng.shuffle(BIOME_KEYS.slice());
-  const out = [];
-  for (let i = 0; i < 3; i++) {
-    const biome = i < biomes.length ? biomes[i] : rng.pick(BIOME_KEYS);
-    const profile = makeProfile(rng, run.localityCount + 1);
-    const value = profileValue(profile);
-    let coal;
-    if (rng.chance(0.15)) coal = rng.int(2, 9); // the odd bargain (or rip-off)
-    else coal = Math.round(2 + 8 * (value - 0.75) + run.localityCount / 4) + rng.int(-1, 1);
-    out.push({
-      biome,
-      name: localityName(rng, biome),
-      coal: Math.max(2, coal),
-      profile,
-      appraisal: appraisal(profile),
-      dx: (i - 1) * 0.28 + rng.range(-0.06, 0.06),
-      dy: rng.range(-0.08, 0.08),
-    });
-  }
-  return out;
+  const here = CITY[run.city];
+  const seen = new Set(run.route);
+  const byDist = CITIES.filter((c) => c !== here)
+    .map((c) => ({ c, d: miles(here, c) }))
+    .sort((a, b) => a.d - b.d);
+  const fresh = byDist.filter((e) => !seen.has(e.c.id));
+  const pool = fresh.length >= 3 ? fresh : byDist;
+  const picks = pool.slice(0, 3).map((e) => e.c);
+  const far = pool.find((e) => !picks.includes(e.c) && e.d > 250 && e.d < 750 && citySize(e.c) >= 2 && citySize(e.c) > citySize(here) - 1);
+  if (far) picks.push(far.c);
+  else if (pool[3]) picks.push(pool[3].c);
+  return picks.map((c) => cityOption(run, c, rng, here));
+}
+
+function arriveAt(run, city, profile) {
+  run.city = city.id;
+  run.route.push(city.id);
+  run.keys = [];
+  run.locality = generateLocality(run, city, profile);
+  run.region = { options: regionalOptions(run) };
 }
 
 export function travel(run, opt) {
@@ -745,8 +992,8 @@ export function travel(run, opt) {
   for (const t of run.placedTraps) run.traps[t.type]++;
   run.placedTraps = [];
   run.coal -= opt.coal;
-  run.locality = generateLocality(run, opt.biome, opt.profile);
-  run.region = { options: regionalOptions(run) };
+  run.stats.miles = (run.stats.miles || 0) + (opt.miles || 0);
+  arriveAt(run, CITY[opt.city], opt.profile);
   run.stats.localities++;
   run.expeditions = [];
 }
@@ -764,7 +1011,7 @@ export function loadRun() {
     const s = localStorage.getItem(SAVE_KEY);
     if (!s) return null;
     const run = JSON.parse(s);
-    if (!run || (run.version !== 2 && run.version !== 3)) return null;
+    if (!run || run.version < 2 || run.version > 4) return null;
     return migrateRun(run);
   } catch (e) {
     return null;
@@ -789,8 +1036,24 @@ function migrateRun(run) {
     for (const l of run.locality.locations) for (const c of l.containers) for (const it of c) if (it.k === 'ammo' && remap[it.t]) it.t = remap[it.t];
     run.food = run.food ?? 6;
     run.locality.profile = run.locality.profile || makeProfile(new RNG(run.locality.seed), run.localityCount, { danger: 1 });
-    run.region = { options: regionalOptions(run) };
     run.version = 3;
+  }
+  if (run.version === 3) {
+    // place the old run somewhere real
+    const rng = new RNG(run.seed);
+    const c = rng.pick(CITIES.filter((x) => x.biome === run.locality.biome && x.pop <= 1500)) || CITIES[0];
+    run.city = c.id;
+    run.route = [c.id];
+    run.locality.city = c.id;
+    run.locality.name = cityLabel(c);
+    run.locality.size = citySize(c);
+    run.batteries = 2;
+    run.keys = [];
+    run.notes = [];
+    run.player.battery = 1;
+    for (const l of run.locality.locations) l.floors = l.floors || 1;
+    run.region = { options: regionalOptions(run) };
+    run.version = 4;
   }
   return run;
 }

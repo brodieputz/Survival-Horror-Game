@@ -96,9 +96,12 @@ export class CampScene {
     this.group.add(dirt);
     const rr = () => this.rng.next();
     this.group.add(P.makeBackdrop(b.backdrop, rr, 80, 25, 230));
+    // a city's skyline on the horizon, as big as the city is
+    const size = this.run.locality.size ?? 0;
+    if (size >= 1) this.group.add(P.makeSkyline(b.backdrop, rr, 80, 25, 250, size));
     // grass: thick in the forest, dry clumps in the desert, a few stalks
     // poking through the snow; trampled flat around the train and the camp
-    const G = { grass: [9000, 0x5a7a3a, 0.5], sand: [2200, 0xa89660, 0.38], snow: [700, 0xb4ac8c, 0.32] }[b.ground] || [4000, 0x5a7a3a, 0.45];
+    const G = { grass: [9000, 0x5a7a3a, 0.5], prairie: [9000, 0xb8a060, 0.55], marsh: [7000, 0x4a6a34, 0.6], sand: [2200, 0xa89660, 0.38], snow: [700, 0xb4ac8c, 0.32] }[b.ground] || [4000, 0x5a7a3a, 0.45];
     this.grass = makeGrass({
       count: G[0],
       color: G[1],
@@ -151,7 +154,7 @@ export class CampScene {
       case 'stump':
         return P.makeStump(rr);
       case 'bush':
-        return P.makeBush(rr, this.biome.ground === 'sand' ? 0x6a6a3a : 0x2a4a22);
+        return P.makeBush(rr, this.biome.ground === 'sand' || this.biome.ground === 'prairie' ? 0x6a6a3a : 0x2a4a22);
       case 'car':
         return P.makeCarWreck(rr);
       case 'barrel':

@@ -755,6 +755,42 @@ const builders = {
     grime(ctx, 64, 64, rng, 12, '#2a2414');
     return toTex(c);
   },
+  // golden, wind-dried prairie grass (Great Plains, Midwest, Texas)
+  prairie(seed = 87) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#7a6a3e';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 800; i++) {
+      const g = rng.int(95, 165);
+      ctx.fillStyle = `rgb(${g},${g - 14},${g - 70})`;
+      ctx.fillRect(rng.int(0, 63), rng.int(0, 63), 1, rng.int(1, 4));
+    }
+    grime(ctx, 64, 64, rng, 10, '#4a3a20');
+    return toTex(c);
+  },
+  // wet, dark ground with standing water (Gulf Coast, Florida)
+  marsh(seed = 88) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#2e3a22';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 600; i++) {
+      const g = rng.int(40, 85);
+      ctx.fillStyle = `rgb(${g - 12},${g + 4},${g - 30})`;
+      ctx.fillRect(rng.int(0, 63), rng.int(0, 63), 1, rng.int(1, 3));
+    }
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = 'rgba(40,52,48,0.55)';
+      ctx.beginPath();
+      ctx.ellipse(rng.range(0, 64), rng.range(0, 64), rng.range(4, 10), rng.range(2, 5), rng.range(0, 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    grime(ctx, 64, 64, rng, 14, '#1a2014');
+    return toTex(c);
+  },
   sand(seed = 32) {
     const rng = new RNG(seed);
     const c = canvas(64, 64);
@@ -1006,6 +1042,51 @@ const builders = {
       ctx.fill();
       cracks(ctx, rng, 90, 30, '#c8d8e8');
     }
+    return toTex(c);
+  },
+  // a skyscraper's curtain wall: two floors of tinted glass panels
+  facadeTower(seed = 90) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 128);
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 128, 128);
+    g.addColorStop(0, '#46596a');
+    g.addColorStop(0.5, '#1c2630');
+    g.addColorStop(1, '#2e3c48');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = `rgba(210,226,240,${rng.range(0.04, 0.12)})`;
+      ctx.beginPath();
+      const x = rng.int(-20, 120);
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x + 18, 0);
+      ctx.lineTo(x - 12, 128);
+      ctx.lineTo(x - 30, 128);
+      ctx.fill();
+    }
+    // panels left lit, blinds drawn, glass gone
+    for (let py = 0; py < 2; py++)
+      for (let px = 0; px < 4; px++) {
+        const r = rng.next();
+        const x = px * 32 + 3;
+        const y = py * 64 + 8;
+        if (r < 0.12) {
+          ctx.fillStyle = '#c8b890';
+          ctx.fillRect(x, y, 26, 26 + rng.int(0, 22));
+        } else if (r < 0.2) {
+          ctx.fillStyle = '#07090c';
+          ctx.fillRect(x, y, 26, 50);
+        } else if (r < 0.24) {
+          cracks(ctx, rng, x + 13, y + 22, '#c8d8e8');
+        }
+      }
+    ctx.fillStyle = '#9aa2aa';
+    for (let x = 0; x <= 128; x += 32) ctx.fillRect(x - 1, 0, 3, 128);
+    ctx.fillStyle = '#5a646c';
+    ctx.fillRect(0, 0, 128, 7);
+    ctx.fillRect(0, 64, 128, 7);
+    grime(ctx, 128, 128, rng, 10, '#10141a');
     return toTex(c);
   },
   facadeConcrete(seed = 69) {

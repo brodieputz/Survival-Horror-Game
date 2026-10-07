@@ -504,6 +504,37 @@ export function makeBackdrop(color, rng, cx, cz, radius) {
   return g;
 }
 
+// Towers on the horizon beyond the barricade, fading into the haze.
+export function makeSkyline(color, rng, cx, cz, radius, size) {
+  const g = new THREE.Group();
+  const c = new THREE.Color(color).multiplyScalar(0.55);
+  const mat = new THREE.MeshBasicMaterial({ color: c, fog: true });
+  const n = [0, 10, 22, 40][size];
+  const hMax = [0, 30, 70, 150][size];
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  geo.translate(0, 0.5, 0);
+  for (let i = 0; i < n; i++) {
+    // bunched toward the middle like a real downtown
+    const t = (rng() + rng() + rng()) / 3 - 0.5;
+    const a = t * 1.5;
+    const r = radius + rng() * 50;
+    const h = hMax * (0.2 + 0.8 * Math.pow(rng(), 1.6)) * (1 - Math.abs(t) * 0.9);
+    const w = 12 + rng() * 22;
+    const m = new THREE.Mesh(geo, mat);
+    m.scale.set(w, h, 12 + rng() * 20);
+    m.position.set(cx + Math.cos(a) * r, -2, cz + Math.sin(a) * r);
+    m.rotation.y = -a + (rng() - 0.5) * 0.4;
+    g.add(m);
+    if (h > 60 && rng() < 0.5) {
+      const mast = new THREE.Mesh(geo, mat);
+      mast.scale.set(1.2, h * 0.25, 1.2);
+      mast.position.set(m.position.x, h - 2, m.position.z);
+      g.add(mast);
+    }
+  }
+  return g;
+}
+
 // ---------------------------------------------------------------- traps
 export function makeMine() {
   const g = new THREE.Group();

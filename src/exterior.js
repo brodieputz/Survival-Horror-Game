@@ -22,6 +22,7 @@ export const EXTERIOR = {
   police: { floors: 2, story: 3.8, roof: 'flat', facade: 'facadeConcrete', ground: 'facadeConcrete', seed: 69, fence: 'jersey', trim: 0x2a3a5a },
   hospital: { floors: 4, story: 3.6, roof: 'flat', facade: 'facadeHospital', ground: 'facadeHospital', seed: 72, fence: 'hedge', trim: 0x8a9294 },
   military: { floors: 1, story: 4.6, roof: 'flat', facade: 'facadeBunker', ground: 'facadeBunker', seed: 81, fence: 'barbed', trim: 0x4a4a3a },
+  skyscraper: { floors: 18, story: 3.8, roof: 'flat', facade: 'facadeTower', ground: 'facadeGlass', seed: 90, glass: true, fence: 'planter', trim: 0x3a3e44 },
 };
 
 // ---------------------------------------------------------------- geometry helpers
@@ -87,7 +88,13 @@ export function buildExterior(scene) {
   const LX1 = (d.lot.x1 + 1) * TILE;
   const LZ1 = (H - 1) * TILE; // the street-side edge of the lot
   const DX = (d.door.x + 0.5) * TILE;
-  const HB = S.floors * S.story;
+  // the building is as tall as its floors inside (more for big blocks
+  // whose upper storeys are long since gutted)
+  const inside = scene.loc.floors || 1;
+  const size = scene.game.run.locality.size ?? 1;
+  let NF = type === 'home' ? inside : Math.max(S.floors, inside);
+  if (type === 'skyscraper') NF = size >= 3 ? 22 + Math.floor(rngObj.next() * 16) : 12 + Math.floor(rngObj.next() * 7);
+  const HB = NF * S.story;
   const biome = scene.game.run.locality.biome;
 
   // ---------- materials (one per facade variant) ----------
@@ -112,7 +119,7 @@ export function buildExterior(scene) {
   // A wall made of 3 m bays, starting at `o` and running along `right`.
   const wall = (o, right, bays, skipDoorBay = -1) => {
     for (let i = 0; i < bays; i++)
-      for (let f = 0; f < S.floors; f++) {
+      for (let f = 0; f < NF; f++) {
         const ground = f === 0;
         const y0 = f * S.story;
         const y1 = (f + 1) * S.story;
@@ -157,7 +164,7 @@ export function buildExterior(scene) {
     pg.add(box(0.3, ph, F - SZ0, pm, SX0, HB + ph / 2, (F + SZ0) / 2));
     pg.add(box(0.3, ph, F - SZ0, pm, SX1, HB + ph / 2, (F + SZ0) / 2));
     pg.add(box(SX1 - SX0 + 0.5, 0.22, 0.45, pm, (SX0 + SX1) / 2, HB - 0.1, F + 0.15));
-    for (let f = 1; f < S.floors; f++) pg.add(box(SX1 - SX0, 0.12, 0.14, pm, (SX0 + SX1) / 2, f * S.story, F + 0.06)); // floor lines
+    for (let f = 1; f < NF; f++) pg.add(box(SX1 - SX0, 0.12, 0.14, pm, (SX0 + SX1) / 2, f * S.story, F + 0.06)); // floor lines
     // rooftop clutter
     const metal = L({ color: 0x8a8e90, roughness: 0.5, metalness: 0.5 });
     const n = 2 + Math.floor(rng() * 4);
@@ -166,7 +173,7 @@ export function buildExterior(scene) {
       const z = SZ0 + 3 + rng() * (F - SZ0 - 6);
       pg.add(box(1.4 + rng(), 0.9 + rng() * 0.6, 1.2 + rng(), metal, x, HB + 0.5, z));
     }
-    if (S.floors >= 3) pg.add(box(4, 2.6, 4, pm, SX0 + (SX1 - SX0) * 0.3, HB + 1.3, SZ0 + (F - SZ0) * 0.5)); // stair housing
+    if (NF >= 3 && type !== 'skyscraper') pg.add(box(4, 2.6, 4, pm, SX0 + (SX1 - SX0) * 0.3, HB + 1.3, SZ0 + (F - SZ0) * 0.5)); // stair housing
     if (type === 'apartment') {
       const wood = L({ color: 0x5a4030, roughness: 0.9 });
       const tx = SX0 + (SX1 - SX0) * 0.72;
@@ -178,6 +185,17 @@ export function buildExterior(scene) {
       pg.add(new THREE.Mesh(new THREE.ConeGeometry(1.65, 0.9, 14), wood).translateX(tx).translateY(HB + 6.05).translateZ(tz));
     }
     if (type === 'military') for (let x = SX0 + 0.6; x < SX1; x += 0.65) pg.add(box(0.6, 0.3, 0.5, L({ color: 0x8a7a56 }), x, HB + 1.05, F));
+    if (type === 'skyscraper') {
+      // a crown, the machine floors and a mast with a warning light
+      const crown = L({ color: 0x2a3036, roughness: 0.35, metalness: 0.7 });
+      const w = SX1 - SX0;
+      const dd = F - SZ0;
+      pg.add(box(w - 4, 6, dd - 4, pm, (SX0 + SX1) / 2, HB + 3, (SZ0 + F) / 2));
+      pg.add(box(w - 3.6, 0.6, dd - 3.6, crown, (SX0 + SX1) / 2, HB + 6.3, (SZ0 + F) / 2));
+      pg.add(box(w * 0.4, 4, dd * 0.4, crown, (SX0 + SX1) / 2, HB + 8.6, (SZ0 + F) / 2));
+      pg.add(box(0.5, 18, 0.5, metal, (SX0 + SX1) / 2, HB + 19.6, (SZ0 + F) / 2));
+      for (let f = 6; f < NF; f += 6) pg.add(box(w + 0.4, 0.5, 0.35, crown, (SX0 + SX1) / 2, f * S.story, F + 0.1)); // mechanical bands
+    }
     group.add(mergeStatic(pg));
   } else {
     // pitched (house) or low-slope (warehouse) roof, ridge running along x
@@ -483,6 +501,50 @@ export function buildExterior(scene) {
       break;
     }
   }
+  if (type === 'skyscraper') {
+    // a paved plaza with a fountain, planters and flags
+    group.add(LP.makeGroundPatch('concreteSlab', LX1 - LX0, LZ1 - F, 2, { y: 0.011 }).translateX((LX0 + LX1) / 2).translateZ((F + LZ1) / 2));
+    group.add(box(8, 0.2, 4, L({ color: 0x1e2226, roughness: 0.3, metalness: 0.7 }), DX, 4.2, F + 2)); // entrance canopy
+    for (const s of [-1, 1]) group.add(box(0.2, 4.2, 0.2, L({ color: 0x9aa0a6, roughness: 0.3, metalness: 0.8 }), DX + s * 3.8, 2.1, F + 3.8));
+    const [a, b] = zone(wide);
+    if (b - a > 7) {
+      const fx = (a + b) / 2;
+      const fz = F + 8.5;
+      const stone = L({ map: tex('concreteSlab'), color: 0xc8c4bc, roughness: 0.8 });
+      const basin = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.1, 0.7, 24), stone);
+      basin.position.set(0, 0.35, 0);
+      const water = new THREE.Mesh(new THREE.CircleGeometry(2.75, 24), L({ color: 0x2a3a30, roughness: 0.15, metalness: 0.2 }));
+      water.rotation.x = -Math.PI / 2;
+      water.position.y = 0.6;
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 2.2, 10), stone);
+      pillar.position.y = 1.1;
+      const f = new THREE.Group();
+      f.add(basin, water, pillar);
+      solid(f, fx, fz, 6, 6);
+    }
+    const [c0, c1] = zone(-wide);
+    for (let x = c0 + 1.5; x < c1 - 1.5; x += 5) {
+      const pl = new THREE.Group();
+      pl.add(box(1.6, 0.8, 1.6, L({ map: tex('concreteSlab'), color: 0x9a968e }), 0, 0.4, 0));
+      const tr = LP.makeLeafyTree(rng, biome === 'tundra');
+      tr.scale.setScalar(0.6);
+      tr.position.y = 0.6;
+      pl.add(tr);
+      solid(pl, x, F + 6, 1.6, 1.6);
+    }
+    for (let k = -1; k <= 1; k++) {
+      const fx = DX + wide * 6 + k * 2;
+      if (fx > LX0 + 1 && fx < LX1 - 1) solid(LP.makeFlagpole(11), fx, LZ1 - 2.4, 0.3, 0.3);
+    }
+    lamps(LZ1 - 4.5);
+    deco(LP.makeBench(), DX - wide * 4.2, F + 1.4, Math.PI);
+    sign(L_name, Math.min(12, (SX1 - SX0) * 0.5), 1.0, DX, 5.2, F + 0.12, { bg: '#14181c', fg: '#e8eef4', font: 'bold 70px sans-serif', lit: true });
+    const mx = DX + wide * 4.5;
+    if (mx > LX0 + 2 && mx < LX1 - 2) {
+      solid(box(3.6, 1.0, 0.6, L({ color: 0x2a2e34, roughness: 0.4, metalness: 0.5 }), 0, 0.5, 0), mx, LZ1 - 1.0, 3.6, 0.6);
+      sign(L_name, 3.3, 0.6, mx, 0.55, LZ1 - 0.68, { bg: '#2a2e34', fg: '#d8c890', font: 'bold 60px sans-serif' });
+    }
+  }
   fenceSides();
 
   // ---------- the street ----------
@@ -521,9 +583,11 @@ export function buildExterior(scene) {
       x += w * 0.6;
       continue;
     }
-    const h = 5 + rng() * 11;
-    const fname = facades[Math.floor(rng() * facades.length)];
-    const t = tex(fname, ({ facadeBrick: 63, facadeSiding: 60, facadeConcrete: 69, facadeShop: 78, facadeMetal: 75 })[fname] + Math.floor(rng() * 3)).clone();
+    // downtowns tower over the street
+    const tall = size >= 2 && rng() < (size >= 3 ? 0.55 : 0.3);
+    const h = tall ? 20 + rng() * (size >= 3 ? 60 : 30) : 5 + rng() * 11;
+    const fname = tall ? (rng() < 0.5 ? 'facadeTower' : 'facadeConcrete') : facades[Math.floor(rng() * facades.length)];
+    const t = tex(fname, ({ facadeBrick: 63, facadeSiding: 60, facadeConcrete: 69, facadeShop: 78, facadeMetal: 75, facadeTower: 90 })[fname] + Math.floor(rng() * 3)).clone();
     t.needsUpdate = true;
     t.repeat.set(Math.max(1, Math.round(w / 3)), Math.max(1, Math.round(h / 3.4)));
     const bm = new THREE.Mesh(new THREE.BoxGeometry(w, h, 12), [L({ map: t }), L({ map: t }), L({ color: 0x3a3a38 }), L({ color: 0x3a3a38 }), L({ map: t }), L({ map: t })]);
@@ -543,7 +607,7 @@ export function buildExterior(scene) {
   // ground beyond the grid
   group.add(groundFrame(scene, d.W * TILE, d.H * TILE));
   // grass on the verges (and the lawn, at a house)
-  const G = { grass: [5000, 0x5a7a3a, 0.48], sand: [1200, 0xa89660, 0.36], snow: [400, 0xb4ac8c, 0.32] }[d.theme.outside];
+  const G = { grass: [5000, 0x5a7a3a, 0.48], prairie: [5000, 0xb8a060, 0.5], marsh: [4000, 0x4a6a34, 0.55], sand: [1200, 0xa89660, 0.36], snow: [400, 0xb4ac8c, 0.32] }[d.theme.outside];
   if (G) {
     group.add(
       makeGrass({

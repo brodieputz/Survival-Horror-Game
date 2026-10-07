@@ -239,6 +239,16 @@
   .loc.claim { background: #d0e0b0; }
   .loc .lbl { position: absolute; top: 38px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 15px; color: #2a1a0a; background: rgba(232,216,176,0.8); padding: 0 3px; }
   .camp-dot { position: absolute; transform: translate(-50%, -50%); font-size: 26px; color: #6a1a10; }
+  .cols2.regional { grid-template-columns: 1fr; }
+  .mapwrap.us { aspect-ratio: 16 / 9; width: min(100%, 100vh); margin: auto; background: #7d8f8c; }
+  .loc.city { width: 26px; height: 26px; font-size: 15px; background: #f0e2b8; }
+  .loc.city.s2 { width: 30px; height: 30px; }
+  .loc.city.s3 { width: 34px; height: 34px; font-size: 18px; }
+  .loc.city .lbl { top: auto; bottom: 100%; margin-bottom: 2px; font-size: 14px; }
+  .camp-dot.here { font-size: 22px; text-shadow: 0 0 6px #f0e2b8; }
+  .ropts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px; }
+  .ropts .appraisal { cursor: pointer; }
+  .ropts .appraisal:hover { outline: 1px solid #b3150f; }
   .skulls { color: #b3150f; letter-spacing: 1px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
   .appraisal { font-size: 19px; margin: 6px 0; line-height: 1.15; }

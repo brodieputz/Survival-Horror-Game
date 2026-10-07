@@ -23,6 +23,7 @@ const CONTAINER_KINDS = {
   police: ['gunlocker', 'cabinet', 'desk', 'footlocker'],
   hospital: ['medcab', 'cabinet', 'medcab', 'desk'],
   military: ['footlocker', 'gunlocker', 'crate', 'toolbox'],
+  skyscraper: ['desk', 'cabinet', 'desk', 'shelf', 'fridge'],
 };
 
 function pickWeighted(rng, w) {
