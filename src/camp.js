@@ -100,7 +100,7 @@ export class CampScene {
     // poking through the snow; trampled flat around the train and the camp
     const G = { grass: [9000, 0x5a7a3a, 0.5], sand: [2200, 0xa89660, 0.38], snow: [700, 0xb4ac8c, 0.32] }[b.ground] || [4000, 0x5a7a3a, 0.45];
     this.grass = makeGrass({
-      count: Math.round(G[0] * (this.game.pipeline.Q?.detail ?? 1)),
+      count: G[0],
       color: G[1],
       height: G[2],
       x0: -12,
@@ -675,9 +675,6 @@ export class CampScene {
   spawnSurvivors() {
     for (const a of this.actors) a.dispose();
     this.actors = [];
-    if (this.beds) this.group.remove(this.beds);
-    this.beds = new THREE.Group();
-    this.group.add(this.beds);
     const list = this.run.survivors.filter((s) => s.status === 'camp' && s.hp > 0);
     list.forEach((rec, i) => {
       const a = (i / Math.max(1, 8)) * Math.PI * 2 + 0.4;
@@ -686,7 +683,7 @@ export class CampScene {
       const bed = P.makeBedroll(rec.look.shirt);
       bed.position.set(26 + Math.cos(a) * 5.2, 0.01, 22 + Math.sin(a) * 5.2);
       bed.rotation.y = -a + Math.PI / 2;
-      this.beds.add(bed);
+      this.group.add(bed);
       const actor = new SurvivorActor(this.game, rec, hx, hz, 'camp', this.group);
       actor.yaw = Math.atan2(26 - hx, 22 - hz);
       this.actors.push(actor);
@@ -712,34 +709,6 @@ export class CampScene {
     this.setGate(false);
     this.setDefend(true);
     this.wave = { ...comp, active: true, spawned: 0, total: comp.list.length, nextT: 2.5, killed: 0 };
-  }
-
-  // ------------------------------------------------------------ save / resume
-  // A night attack in progress: the wave's progress and every zombie on the
-  // field. Barricade, traps, turrets and survivors are already in the run.
-  snapshot() {
-    const w = this.wave;
-    return {
-      wave: w ? { wave: w.wave, list: w.list, hpMul: w.hpMul, spdMul: w.spdMul, dmgMul: w.dmgMul, active: w.active, spawned: w.spawned, total: w.total, killed: w.killed, nextT: w.nextT } : null,
-      enemies: this.enemies
-        .filter((e) => e.alive)
-        .map((e) => ({ type: e.type, x: +e.pos.x.toFixed(2), z: +e.pos.z.toFixed(2), hp: Math.ceil(e.hp), mul: e.mul, laneZ: e.laneZ })),
-    };
-  }
-
-  restore(snap) {
-    const w = snap.wave;
-    if (w) {
-      this.startWave({ wave: w.wave, list: w.list, hpMul: w.hpMul, spdMul: w.spdMul, dmgMul: w.dmgMul });
-      Object.assign(this.wave, { active: w.active, spawned: w.spawned, total: w.total, killed: w.killed, nextT: Math.max(1.5, w.nextT) });
-      // survivors take up their posts straight away
-      for (const a of this.actors) if (a.post) a.pos.set(a.post.x, 0, a.post.z);
-    }
-    for (const z of snap.enemies) {
-      const e = this.spawnZombie(z.type, z.x, z.z, z.mul);
-      e.hp = Math.min(e.maxHp, z.hp);
-      if (z.laneZ != null) e.laneZ = z.laneZ;
-    }
   }
 
   spawnZombie(type, x, z, mul) {

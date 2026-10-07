@@ -18,7 +18,6 @@ import {
   mouthsToFeed,
   appraisal,
 } from './run.js';
-import * as S from './saves.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -53,7 +52,6 @@ export class UI {
       'xpFill', 'hpFill', 'hpText', 'stFill', 'status', 'trapHud', 'inv', 'wname', 'ammo', 'ammoSub', 'cross', 'prompt', 'msgs', 'banner',
       'bannerT', 'bannerS', 'hurt', 'hideMask', 'fade', 'title', 'pause', 'panel', 'panelTitle', 'panelSub', 'panelBody', 'mapScreen',
       'bigmap', 'death', 'deathCause', 'deathSub', 'gameover', 'goStats', 'minimap', 'bestLine', 'vignette', 'mapLegend', 'continueBtn',
-      'loadBtn', 'slots', 'slotsTitle', 'slotsOpts', 'slotList', 'slotsMsg', 'importBtn', 'importFile', 'slotsBack', 'saveNote', 'reloadBtn',
     ])
       this.el[id] = $(id);
     this.mini = this.el.minimap.getContext('2d');
@@ -73,110 +71,6 @@ export class UI {
       if (!b || b.disabled) return;
       this.game.panelAction(b.dataset.act, b.dataset);
     });
-    this.slotsMode = null;
-    this.el.slotList.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-slot]');
-      if (b) this.slotAction(b, b.dataset.slot, +b.dataset.i);
-    });
-    this.el.slotsBack.addEventListener('click', () => this.openSlots(null));
-    this.el.importBtn.addEventListener('click', () => this.el.importFile.click());
-    this.el.importFile.addEventListener('change', () => this.importFile());
-  }
-
-  // ------------------------------------------------------------ save slots
-  // mode: 'load' (pick a save), 'new' (pick a slot for a new run) or null.
-  openSlots(mode) {
-    this.slotsMode = mode;
-    this.el.slots.classList.toggle('show', !!mode);
-    if (!mode) return;
-    this.el.slotsTitle.textContent = mode === 'new' ? 'NEW RUN' : 'LOAD GAME';
-    this.el.slotsMsg.textContent = '';
-    this.el.slotsOpts.innerHTML =
-      mode === 'new'
-        ? `<label class="pd"><input type="checkbox" id="pdBox" ${this.permadeath === false ? '' : 'checked'} /> Permadeath <span class="muted">— dying ends the run and deletes its save. Untick to be able to reload your last save instead.</span></label>`
-        : '';
-    const box = $('pdBox');
-    if (box) box.addEventListener('change', () => (this.permadeath = box.checked));
-    this.renderSlots();
-  }
-
-  renderSlots() {
-    const mode = this.slotsMode;
-    const saves = S.listSlots();
-    this.el.slotList.innerHTML = saves
-      .map((sv, i) => {
-        if (!sv) {
-          return `<div class="slotcard empty"><div class="sl-head">SLOT ${i + 1} <span class="muted">— empty</span></div>${
-            mode === 'new' ? `<div class="sl-btns"><button class="pbtn big" data-slot="start" data-i="${i}">START HERE</button></div>` : ''
-          }</div>`;
-        }
-        const d = S.describeSave(sv);
-        const btns =
-          mode === 'new'
-            ? `<button class="pbtn big warn" data-slot="overwrite" data-i="${i}">OVERWRITE</button>`
-            : `<button class="pbtn big" data-slot="load" data-i="${i}">LOAD</button><button class="pbtn" data-slot="export" data-i="${i}">EXPORT</button><button class="pbtn warn" data-slot="delete" data-i="${i}">DELETE</button>`;
-        return `<div class="slotcard"><div class="sl-head">SLOT ${i + 1} — ${esc(d.title)}</div><div class="sl-info">${esc(d.detail)}</div><div class="sl-info"><span class="gold">${esc(
-          d.where
-        )}</span> · ${esc(d.saved)}${d.permadeath ? ' · <span class="bad">permadeath</span>' : ' · <span class="good">reloadable</span>'}</div><div class="sl-btns">${btns}</div></div>`;
-      })
-      .join('');
-  }
-
-  slotAction(btn, act, i) {
-    const g = this.game;
-    // destructive actions ask twice
-    if ((act === 'delete' || act === 'overwrite') && !btn.dataset.armed) {
-      btn.dataset.armed = '1';
-      btn.textContent = act === 'delete' ? 'DELETE? TAP AGAIN' : 'OVERWRITE? TAP AGAIN';
-      setTimeout(() => {
-        if (btn.isConnected) this.renderSlots();
-      }, 3500);
-      return;
-    }
-    if (act === 'load') g.loadSlot(i);
-    else if (act === 'start' || act === 'overwrite') g.newRun(i, this.permadeath !== false);
-    else if (act === 'export') {
-      const sv = S.readSlot(i);
-      if (sv) S.exportSave(sv, i);
-      this.el.slotsMsg.textContent = `Slot ${i + 1} exported. Keep the file to import it on another device.`;
-    } else if (act === 'delete') {
-      S.deleteSlot(i);
-      this.renderSlots();
-      this.el.slotsMsg.textContent = `Slot ${i + 1} deleted.`;
-      g.showTitle();
-    }
-  }
-
-  importFile() {
-    const f = this.el.importFile.files[0];
-    this.el.importFile.value = '';
-    if (!f) return;
-    f.text().then((text) => {
-      const sv = S.parseSave(text);
-      if (!sv) {
-        this.el.slotsMsg.textContent = "That file isn't a Dread Depths save.";
-        return;
-      }
-      const i = S.firstEmptySlot();
-      if (i < 0) {
-        this.el.slotsMsg.textContent = 'All slots are full. Delete one, then import again.';
-        return;
-      }
-      const err = S.writeSlot(i, sv);
-      this.el.slotsMsg.textContent = err ? `Couldn't import: ${err}` : `Imported into slot ${i + 1} (day ${sv.run.day}, ${sv.run.locality.name}).`;
-      this.renderSlots();
-      this.game.showTitle();
-    });
-  }
-
-  // The line under the pause menu's buttons: which slot, and what dying means.
-  pauseNote(g, done = '') {
-    const run = g.run;
-    if (!run) return;
-    this.el.saveNote.textContent =
-      (done ? done + ' ' : '') +
-      `Saving to slot ${g.slot + 1}. You can save anywhere, even mid-search or mid-attack; the game also saves each morning, back in camp, and whenever it goes into the background.` +
-      (run.permadeath !== false ? ' Permadeath: dying deletes this save.' : ' Permadeath is off: after dying you can reload your last save.');
   }
 
   set(key, el, value, prop = 'textContent') {
@@ -287,7 +181,7 @@ export class UI {
       sq += `<div class="sq ${away ? 'away' : ''}"><span>${esc(s.name.split(' ')[0])} <small>L${s.level}</small>${away ? ' (out)' : ''}</span><div class="hb"><i style="width:${(hpF * 100).toFixed(0)}%"></i></div></div>`;
     }
     this.set('squad', this.el.squad, sq, 'innerHTML');
-    this.set('miniHint', this.el.miniHint, lvl.kind === 'building' ? (g.touch.active ? 'tap for map' : '[M] map') : '');
+    this.set('miniHint', this.el.miniHint, lvl.kind === 'building' ? '[M] map' : '');
 
     // bottom-left: level, health, stamina
     this.set('lvlT', this.el.lvlText, `LEVEL ${run.player.level}`);
@@ -357,13 +251,9 @@ export class UI {
     this.set('trapShow', this.el.trapHud, pl ? 'show' : '', 'className');
     if (!pl) return;
     const run = g.run;
-    const touch = g.touch.active;
-    // on a phone only the chosen trap is named, to keep the picker small
-    const name = (t) => (touch && pl.type !== t ? '' : ' ' + TRAPS[t].name);
-    const items = TRAP_ORDER.map((t, i) => `<span class="t ${pl.type === t ? 'on' : ''} ${run.traps[t] ? '' : 'none'}" data-k="${i + 1}">${touch ? '' : i + 1 + ' '}${TRAPS[t].icon}${name(t)} ×${run.traps[t]}</span>`).join('');
+    const items = TRAP_ORDER.map((t, i) => `<span class="t ${pl.type === t ? 'on' : ''} ${run.traps[t] ? '' : 'none'}">${i + 1} ${TRAPS[t].icon} ${TRAPS[t].name} ×${run.traps[t]}</span>`).join('');
     const msg = pl.error ? `<span class="bad">${esc(pl.error)}</span>` : `<span class="muted">${esc(TRAPS[pl.type].desc)}</span>`;
-    const hint = touch ? 'SET: place · tap a trap to choose it · DONE: finish' : 'Click: place · 1-4 / wheel: choose · T or Esc: done';
-    this.set('trapHud', this.el.trapHud, `<div class="tsel">${items}</div>${msg}<div class="muted">${hint}</div>`, 'innerHTML');
+    this.set('trapHud', this.el.trapHud, `<div class="tsel">${items}</div>${msg}<div class="muted">Click: place · 1-4 / wheel: choose · T or Esc: done</div>`, 'innerHTML');
   }
 
   // ------------------------------------------------------------ minimaps
@@ -506,8 +396,7 @@ export class UI {
     this.el.panelSub.innerHTML = r.sub || '';
     this.el.panelBody.innerHTML = r.body;
     const close = $('panelClose');
-    const label = r.close || 'CLOSE [E]';
-    close.textContent = this.game.touch.active ? label.replace(' [E]', '') : label;
+    close.textContent = r.close || 'CLOSE [E]';
     if (P.kind === 'map' && P.tab === 'local') this.drawLocalMap();
     if (P.kind === 'map' && P.tab === 'regional') this.drawRegionalMap();
   }
@@ -749,7 +638,7 @@ export class UI {
   }
 
   lootHint(L) {
-    const names = { scrap: 'scrap', coal: 'coal', medkit: 'med kits', ammo: 'ammo', weapon: 'weapons', trap: 'traps', blueprint: 'blueprints', food: 'food' };
+    const names = { scrap: 'scrap', coal: 'coal', medkit: 'med kits', ammo: 'ammo', weapon: 'weapons', trap: 'traps', blueprint: 'blueprints' };
     return Object.entries(L.loot)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 4)
@@ -874,26 +763,21 @@ export class UI {
   }
 
   // ------------------------------------------------------------ screens
-  showTitle(on, best, cont, any) {
+  showTitle(on, best, cont) {
     this.el.title.classList.toggle('show', on);
     this.el.bestLine.textContent = best || '';
     this.el.continueBtn.style.display = cont ? '' : 'none';
     if (cont) this.el.continueBtn.textContent = cont;
-    this.el.loadBtn.style.display = any ? '' : 'none';
   }
   showPause(on) {
     this.el.pause.classList.toggle('show', on);
-    if (on) {
-      const q = $('setQuality');
-      if (q) q.value = this.game.settings.quality;
-    }
   }
   showHud(on) {
     this.el.hud.classList.toggle('show', on);
   }
-  showDeath(cause, permadeath = true) {
+  showDeath(cause) {
     this.el.deathCause.textContent = DEATH_TEXT[cause] || 'The dark takes you.';
-    this.el.deathSub.textContent = permadeath ? 'There is no one left to carry on.' : 'Your last save is waiting.';
+    this.el.deathSub.textContent = 'There is no one left to carry on.';
     this.el.death.classList.add('show');
   }
   hideDeath() {
@@ -902,7 +786,6 @@ export class UI {
   showGameOver(stats, on = true) {
     this.el.gameover.classList.toggle('show', on);
     if (!on) return;
-    this.el.reloadBtn.style.display = stats.reload >= 0 ? '' : 'none';
     this.el.goStats.innerHTML = `
       <div><span>Nights survived</span><b>${stats.nights}</b></div>
       <div><span>Hordes repelled</span><b>${stats.waves}</b></div>
@@ -940,16 +823,6 @@ export class UI {
         g.saveSettings();
       });
     }
-    const touch = $('setTouch');
-    if (touch) {
-      touch.value = s.touch || 'auto';
-      touch.addEventListener('change', () => {
-        s.touch = touch.value;
-        g.applyTouchSetting();
-        g.saveSettings();
-      });
-    }
-    $('setFull')?.addEventListener('click', () => g.toggleFullscreen());
   }
 }
 

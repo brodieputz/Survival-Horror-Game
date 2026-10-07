@@ -61,12 +61,10 @@ const GradeShader = {
     }`,
 };
 
-// detail scales the amount of grass and other scattered clutter.
 export const QUALITY = {
-  cinematic: { label: 'Cinematic', post: true, msaa: 4, bloom: true, ratio: 1.5, detail: 1 },
-  balanced: { label: 'Balanced', post: true, msaa: 2, bloom: false, ratio: 1, detail: 0.8 },
-  performance: { label: 'Performance (phones)', post: false, msaa: 0, bloom: false, ratio: 1.25, detail: 0.45 },
-  retro: { label: 'Retro (pixelated)', post: false, msaa: 0, bloom: false, ratio: 0.5, detail: 0.6 },
+  cinematic: { label: 'Cinematic', post: true, msaa: 4, bloom: true, ratio: 1.5 },
+  balanced: { label: 'Balanced', post: true, msaa: 2, bloom: false, ratio: 1 },
+  retro: { label: 'Retro (pixelated)', post: false, msaa: 0, bloom: false, ratio: 0.5 },
 };
 
 export class Pipeline {
@@ -104,7 +102,7 @@ export class Pipeline {
 
   pixelRatio() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    return this.quality === 'retro' ? this.Q.ratio : Math.min(dpr, this.Q.ratio);
+    return this.Q.post ? Math.min(dpr, this.Q.ratio) : this.Q.ratio;
   }
 
   setSize(w, h) {

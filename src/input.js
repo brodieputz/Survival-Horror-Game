@@ -14,11 +14,6 @@ export class Input {
     this.sensitivity = 1;
     this.onLockChange = null;
     this.onKey = null;
-    // touch screens: there is no pointer lock, and movement is analog
-    this.touchMode = false;
-    this.stick = false;
-    this.moveX = 0;
-    this.moveY = 0;
 
     window.addEventListener('keydown', (e) => {
       if (['Space', 'Tab', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
@@ -63,13 +58,6 @@ export class Input {
   }
 
   lock() {
-    if (this.touchMode) {
-      if (!this.locked) {
-        this.locked = true;
-        this.onLockChange?.(true);
-      }
-      return;
-    }
     try {
       const p = this.canvas.requestPointerLock();
       if (p && p.catch) p.catch(() => this.onLockChange?.(false));
@@ -78,19 +66,7 @@ export class Input {
     }
   }
   unlock() {
-    if (this.touchMode) {
-      if (this.locked) {
-        this.locked = false;
-        this.onLockChange?.(false);
-      }
-      return;
-    }
     if (document.pointerLockElement) document.exitPointerLock();
-  }
-
-  // a one-frame key press from an on-screen button
-  tap(code) {
-    this.pressed.add(code);
   }
 
   down(code) {

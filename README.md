@@ -1,21 +1,17 @@
 # Dread Depths
 
-A first-person survival horror game built with [three.js](https://threejs.org), inspired by *The Last Stand 2*. Your camp sits beside a stalled train. By day you scavenge the buildings around you, recruit and arm survivors, and fortify the camp. By night the dead may come across the field. When you have enough coal, you can move the train somewhere new. There is no end. The score is how many nights you survive. It plays with a mouse and keyboard or on a phone or tablet, and you can save anywhere.
+A first-person survival horror game built with [three.js](https://threejs.org), inspired by *The Last Stand 2*. Your camp sits beside a stalled train. By day you scavenge the buildings around you, recruit and arm survivors, and fortify the camp. By night the dead may come across the field. When you have enough coal, you can move the train somewhere new. There is one life and no end. The score is how many nights you survive.
 
 ## Running it
 
 The repo includes a prebuilt bundle (`dist/game.js`), so you can **open `index.html` in a browser**. No server is needed.
-
-**`dread-depths.html`** is the whole game in one file, so a downloaded copy can't lose its script. Open it in a browser (Chrome on Android).
-
-**On a phone or tablet**, the best way is to open the page from a web address (for example GitHub Pages) and hold the device sideways. Opening a downloaded file in a phone's file viewer usually shows a *preview* that doesn't run the game. The title screen then says so instead of ignoring taps. Android browsers switch to full screen when a run starts. On an iPhone, *Share → Add to Home Screen* gives the same full-screen view.
 
 To work on the code:
 
 ```bash
 npm install
 npm run dev     # rebuilds on change and serves at http://localhost:8080
-npm run build   # writes the minified bundle to dist/game.js and the single-file dread-depths.html
+npm run build   # writes the minified bundle to dist/game.js
 ```
 
 ## The camp
@@ -61,7 +57,7 @@ On the first night there is a 50% chance of a wave, and the chance rises by 1% e
 * The dead don't pile up: bodies fade away a few seconds after they drop, in camp and in buildings.
 * Clear the wave and dawn comes. You get a report, and the run is saved.
 
-If you die, the run is over, unless you turned permadeath off for it (see **Saving**).
+If you die at any point, the run is over.
 
 ## Leveling
 
@@ -113,21 +109,7 @@ Everyone, living or dead, is built to the same human scale as you: about 1.8 m t
 
 Buildings keep the original hazards: spike pits, bear traps, tripwires, broken glass, and lockers and beds to hide in.
 
-## Saving
-
-There are **three save slots**, each holding its own run.
-
-* **You can save anywhere** from the pause menu (**Save game**, or **Save & quit**): in camp, halfway through searching a building, or in the middle of a night attack. Loading puts everything back where it was. That includes which containers you've opened, the zombies still standing, the explored map and where your companions were. At night it also restores the horde on the field and how much of it is still to come.
-* **The game also saves on its own**: each morning, when you get back to camp, when you close a menu in camp, and whenever the game goes into the background (switching apps, locking the screen or closing the tab). On a phone you can leave at any moment and pick up where you were.
-* **Continue** on the title screen loads the run you played last. **Load game** lists all three slots with the day, place, survivors and where things stood.
-* **Permadeath** is chosen per run when you start it, and is on by default. With it on, dying deletes the run's save. With it off, the game-over screen offers **Load last save**.
-* **Export** a slot to a `.json` file and **Import** it again, on the same device or another one: start a run on a computer, then carry it on on your phone.
-
-Older saves from before slots existed are moved into slot 1 automatically.
-
 ## Controls
-
-### Mouse and keyboard
 
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
@@ -139,37 +121,20 @@ Older saves from before slots existed are moved into slot 1 automatically.
 | T | Place traps (camp, by day) | F | Flashlight |
 | M / Tab | Map (in buildings) | Esc | Pause |
 
-### Touch screens
-
-On phones and tablets the controls appear on screen. The **Touch controls** setting on the pause screen can force them on or off, for example on a tablet with a keyboard.
-
-| Control | Action |
-| --- | --- |
-| Left thumb, anywhere on the left side | A movement stick appears under it. Push it to the edge to run. |
-| Right thumb, anywhere else | Drag to look |
-| **FIRE** | Hold to attack. Keep your thumb on it and drag to aim while firing. |
-| **Use** | Appears with the action's name whenever there's something to interact with |
-| **RELOAD**, **JUMP**, **CROUCH**, **LIGHT**, **II** | Reload, jump, crouch, flashlight, pause |
-| Weapon slots | Tap to switch weapon, use a med kit or start setting traps |
-| Minimap | Tap for the full map inside buildings |
-
-While setting traps, **FIRE** becomes **SET**, **RELOAD** becomes **NEXT** (trap type) and **JUMP** becomes **DONE**; you can also tap a trap type in the picker. On a touch screen, shots get light aim assist: bullets bend a few degrees toward the zombie nearest the crosshair. Turning a phone upright pauses the game and asks you to turn it back.
-
 ## Graphics
 
-The **Graphics** setting on the pause screen has four levels:
+The **Graphics** setting on the pause screen has three levels:
 
 * **Cinematic** (default): soft sun shadows that follow you, a sky with drifting clouds, a sun, stars and a moon, image-based reflections, multisampled HDR rendering with bloom, ACES tone mapping and a film grade (contrast, a slight warm/cool split, vignette, grain and a touch of lens fringing).
 * **Balanced**: the same look without bloom, with lighter anti-aliasing and smaller shadow maps, for slower machines.
-* **Performance (phones)** (default on phones and tablets): the same lighting, sky and tone mapping drawn straight to the screen with the GPU's own anti-aliasing, with smaller shadow maps and less grass.
 * **Retro (pixelated)**: the original low-resolution look.
 
-Walking into a building, the daylight fades out over a few steps and your eyes take a moment to adjust. Grass sways in the wind, smoke curls up from the campfire, and rain falls in streaks. Short letterboxed shots open a building search, the start of an attack and arrival in a new place; any key, click or tap skips them.
+Walking into a building, the daylight fades out over a few steps and your eyes take a moment to adjust. Grass sways in the wind, smoke curls up from the campfire, and rain falls in streaks. Short letterboxed shots open a building search, the start of an attack and arrival in a new place; any key or a click skips them.
 
 ## Tech notes
 
 * Everything is procedural: there are no image or sound files. Textures are painted on canvases, and the music and sound effects are synthesised with the Web Audio API.
-* The run state is plain JSON (`src/run.js`). Saves (`src/saves.js`) wrap it with a snapshot of the scene, a building search or a night attack, and keep it in `localStorage`, one key per slot.
+* The run state is plain JSON (`src/run.js`) and is saved to `localStorage` each morning and whenever you're back in camp by day.
 * Source layout:
   * `src/run.js`: the run state, survivors, XP, localities and locations with their pre-rolled loot, waves, the regional map, save/load
   * `src/weapons.js`: the weapon catalog, ammo, rarity, upgrades and loot rolls
@@ -181,8 +146,6 @@ Walking into a building, the daylight fades out over a few steps and your eyes t
   * `src/survivors.js`: survivor NPCs (camp, defend, follow)
   * `src/combat.js`: hitscan, projectiles, explosions, fire, melee and tracers
   * `src/player.js`: the player controller and weapons
-  * `src/ui.js`: the HUD, minimaps, management panels and the save-slot screens
-  * `src/saves.js`: save slots, export/import and migrating older saves
-  * `src/touch.js`: on-screen controls for touch screens
+  * `src/ui.js`: the HUD, minimaps and management panels
   * `src/actors.js`, `src/gunModels.js`, `src/props.js`, `src/models.js`: low-poly models
   * `src/world.js`: geometry, collision, line of sight and A* pathfinding

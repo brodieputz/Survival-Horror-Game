@@ -18,12 +18,6 @@ export class AudioSys {
     }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    // iPhones mute web audio with the ring/silent switch unless told it's media
-    try {
-      if (navigator.audioSession) navigator.audioSession.type = 'playback';
-    } catch (e) {
-      /* not supported */
-    }
     const ctx = (this.ctx = new AC());
     this.master = ctx.createGain();
     this.master.gain.value = this.volume.master;

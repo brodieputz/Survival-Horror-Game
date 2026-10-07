@@ -13,13 +13,11 @@ import { makeViewModel, makeFistsViewModel, makeGunModel } from './gunModels.js'
 import { Environment } from './env.js';
 import { Pipeline, QUALITY } from './render.js';
 import { setAnisotropy } from './textures.js';
-import { TouchControls, isTouchDevice } from './touch.js';
 import { makeBearTrap } from './models.js';
 import { makeMine, makeTripSpikes, makeKeroseneTank } from './props.js';
 import { DAY_HOURS, TRAVEL_HOURS, BARRICADE, TURRETS, TRAPS, TRAP_ORDER } from './config.js';
 import { WEAPONS, upgradeCost, UPG_MAX } from './weapons.js';
 import * as R from './run.js';
-import * as S from './saves.js';
 import { damp, dist2D, clamp } from './util.js';
 
 const SETTINGS_KEY = 'dreaddepths.settings';
@@ -34,7 +32,7 @@ const SPAWNS = {
 class Game {
   constructor() {
     this.canvas = document.getElementById('game');
-    this.settings = { sens: 1, master: 0.85, music: 0.7, sfx: 1, quality: null, touch: 'auto', fullscreen: true };
+    this.settings = { sens: 1, master: 0.85, music: 0.7, sfx: 1, quality: 'cinematic' };
     try {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
       delete saved.retro; // replaced by the quality setting
@@ -42,13 +40,9 @@ class Game {
     } catch (e) {
       /* ignore corrupt settings */
     }
-    this.isTouch = isTouchDevice();
-    // phones start on the lighter preset; desktops on the full look
-    if (!QUALITY[this.settings.quality]) this.settings.quality = this.isTouch ? 'performance' : 'cinematic';
+    if (!QUALITY[this.settings.quality]) this.settings.quality = 'cinematic';
 
-    // On phones the lighter preset draws straight to the screen, where the
-    // GPU's own anti-aliasing is cheap; the post-processed presets do their own.
-    const r = (this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: this.isTouch, powerPreference: 'high-performance' }));
+    const r = (this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'high-performance' }));
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -96,8 +90,6 @@ class Game {
     this.audio.volume = { master: this.settings.master, music: this.settings.music, sfx: this.settings.sfx };
     this.input = new Input(this.canvas);
     this.input.sensitivity = this.settings.sens;
-    this.touch = new TouchControls(this);
-    this.applyTouchSetting();
     this.run = null;
     this.ui = new UI(this);
 
@@ -124,13 +116,8 @@ class Game {
       if (locked && this.state === 'paused') this.pause(false);
     };
     this.input.onKey = (e) => this.onKey(e);
-    S.migrateLegacySave();
-    this.slot = -1;
     this.bindButtons();
     window.addEventListener('resize', () => this.resize());
-    // phones kill background tabs: save the moment the game is hidden
-    document.addEventListener('visibilitychange', () => document.hidden && this.onHidden());
-    window.addEventListener('pagehide', () => this.onHidden());
     this.resize();
     this.showTitle();
     this.last = performance.now();
@@ -139,21 +126,11 @@ class Game {
 
   // ------------------------------------------------------------ setup
   bindButtons() {
-    const on = (id, fn) => document.getElementById(id).addEventListener('click', fn);
-    on('startBtn', () => this.ui.openSlots('new'));
-    on('continueBtn', () => this.continueRun());
-    on('loadBtn', () => this.ui.openSlots('load'));
-    on('resumeBtn', () => this.input.lock());
-    on('saveBtn', () => this.ui.pauseNote(this, this.saveGame(true) ? 'Saved.' : "Couldn't save."));
-    on('quitBtn', () => this.toTitle());
-    on('retryBtn', () => this.ui.openSlots('new'));
-    on('reloadBtn', () => this.loadSlot(this.slot));
-    on('goTitleBtn', () => {
-      this.ui.showGameOver(null, false);
-      this.disposeLevel();
-      this.state = 'title';
-      this.showTitle();
-    });
+    document.getElementById('startBtn').addEventListener('click', () => this.newRun());
+    document.getElementById('continueBtn').addEventListener('click', () => this.continueRun());
+    document.getElementById('resumeBtn').addEventListener('click', () => this.input.lock());
+    document.getElementById('quitBtn').addEventListener('click', () => this.toTitle());
+    document.getElementById('retryBtn').addEventListener('click', () => this.newRun());
     document.getElementById('panelClose').addEventListener('click', () => this.closePanel());
     document.getElementById('mapScreen').addEventListener('click', () => this.ui.toggleMap(false));
     this.canvas.addEventListener('click', () => {
@@ -164,8 +141,6 @@ class Game {
   resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    // turned to portrait mid-game: the rotate prompt covers the screen, so stop
-    if (this.touch.active && h > w && this.state === 'playing') this.input.unlock();
     this.renderer.setSize(w, h, false);
     this.applyResolution();
     this.camera.aspect = w / h;
@@ -178,34 +153,9 @@ class Game {
       this.env.setQuality(q);
     }
     this.pipeline.setSize(window.innerWidth, window.innerHeight);
-    const fs = this.flashlight.shadow;
-    const fsize = q === 'performance' || q === 'retro' ? 512 : 1024;
-    if (fs.mapSize.x !== fsize) {
-      fs.mapSize.set(fsize, fsize);
-      fs.map?.dispose();
-      fs.map = null;
-    }
     this.canvas.classList.toggle('retro', q === 'retro');
     document.body.classList.toggle('post', !!QUALITY[q].post);
-    document.body.classList.toggle('retro', q === 'retro');
   }
-
-  // Touch controls: on for touch screens unless switched off (or forced on).
-  applyTouchSetting() {
-    const t = this.settings.touch;
-    this.touch.setActive(t === 'on' || (t !== 'off' && this.isTouch));
-  }
-
-  toggleFullscreen() {
-    const d = document;
-    if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
-    else {
-      const el = d.documentElement;
-      const req = el.requestFullscreen || el.webkitRequestFullscreen;
-      if (req) req.call(el).catch?.(() => {});
-    }
-  }
-
   saveSettings() {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings));
@@ -216,10 +166,8 @@ class Game {
 
   showTitle() {
     const best = R.bestNights();
-    const i = S.lastSlot();
-    const saved = i >= 0 ? S.readSlot(i) : null;
-    const any = S.listSlots().some(Boolean);
-    this.ui.showTitle(true, best ? `Longest run: ${best} ${best === 1 ? 'night' : 'nights'}` : '', saved ? `CONTINUE — DAY ${saved.run.day}, ${saved.run.locality.name}` : '', any);
+    const saved = R.loadRun();
+    this.ui.showTitle(true, best ? `Longest run: ${best} ${best === 1 ? 'night' : 'nights'}` : '', saved ? `CONTINUE — DAY ${saved.day}, ${saved.locality.name}` : '');
   }
 
   // ------------------------------------------------------------ helpers used by scenes
@@ -245,160 +193,38 @@ class Game {
   }
 
   // ------------------------------------------------------------ run flow
-  // Start a new run in a save slot (the first empty one by default).
-  newRun(slot = S.firstEmptySlot(), permadeath = true) {
+  newRun() {
     this.audio.init();
-    if (slot < 0) slot = 0;
-    this.slot = slot;
-    this.run = R.newRun(undefined, { permadeath });
+    R.clearRun();
+    this.run = R.newRun();
     this.startRun(true);
-    this.saveGame();
   }
 
   continueRun() {
-    const i = S.lastSlot();
-    if (i < 0) return this.ui.openSlots('new');
-    this.loadSlot(i);
-  }
-
-  loadSlot(i) {
-    const save = S.readSlot(i);
-    if (!save) return;
     this.audio.init();
-    this.slot = i;
-    this.run = save.run;
-    this.startRun(false, save.scene);
+    const run = R.loadRun();
+    if (!run) return this.newRun();
+    this.run = run;
+    this.startRun(false);
   }
 
-  startRun(fresh, scene = null) {
+  startRun(fresh) {
     this.ui.showTitle(false);
-    this.ui.openSlots(null);
     this.ui.showGameOver(null, false);
     this.ui.hideDeath();
     this.ui.closePanel();
-    this.trip = null;
-    this.dawnT = 0;
     this.player = new Player(this);
+    this.enterCamp(this.run.phase === 'night' ? 'night' : 'tent');
     this.state = 'playing';
-    const resumed = scene ? this.resume(scene) : false;
-    if (!resumed) {
-      this.enterCamp(this.run.phase === 'night' ? 'night' : 'tent');
-      // a night saved without its scene can't be rebuilt: let it pass quietly
-      if (this.run.phase === 'night') {
-        this.nightReport = { lines: [], quiet: true };
-        this.state = 'sleeping';
-        this.quietT = 1;
-      }
-    }
     this.ui.showHud(true);
     this.ui.fadeV = 1;
     this.ui.fade(0, 2);
     this.input.lock();
-    this.touch.enterGame();
-    if (this.state === 'playing' && !resumed) this.audio.setMode('safe');
+    this.audio.setMode('safe');
     if (fresh) {
       this.ui.banner(`DAY ${this.run.day}`, `${this.run.locality.name} · ${R.BIOMES[this.run.locality.biome].name}`, 4);
       this.ui.message('Study the maps on the table to find places to search. Sleep in your tent to end the day.', '', 9);
-    } else if (!resumed) this.ui.banner(`DAY ${this.run.day}`, this.run.locality.name, 3);
-  }
-
-  // Write the run (and a snapshot of where things stand) to the current slot.
-  // Returns true if it saved. Mid-transition there is nothing consistent to
-  // save, and a dead player's run has nothing left to save.
-  saveGame(announce = false) {
-    if (!this.run || this.slot == null || this.slot < 0) return false;
-    if (this.state === 'transition' || this.state === 'dying' || this.state === 'gameover') {
-      if (announce) this.ui.message("Can't save right now.", 'bad');
-      return false;
-    }
-    const scene = this.snapshot();
-    const err = S.writeSlot(this.slot, { format: S.SAVE_FORMAT, savedAt: Date.now(), run: this.run, scene });
-    if (announce) this.ui.message(err ? `Couldn't save: ${err}` : `Game saved to slot ${this.slot + 1}.`, err ? 'bad' : 'good', 3);
-    return !err;
-  }
-
-  // Where things stand, beyond the run itself: the search in progress, the
-  // attack in progress, or just where you are standing in camp.
-  snapshot() {
-    const lvl = this.level;
-    const p = this.player;
-    if (!lvl || !p || !p.alive) return null;
-    const spot = p.hidden ? p.hidden.exit : p.pos;
-    const player = { x: +spot.x.toFixed(2), z: +spot.z.toFixed(2), yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3), slot: p.slot, flashlight: p.flashlight, stamina: Math.round(p.stamina) };
-    if (lvl.kind === 'building') {
-      const t = this.trip;
-      return { kind: 'building', locId: lvl.loc.id, player, trip: { found: t.found, recruits: t.recruits, kills: t.kills, lost: t.lost }, level: lvl.snapshot() };
-    }
-    if (this.run.phase === 'night') {
-      return { kind: 'night', player, night: { report: this.nightReport || null, lost: this.nightLost || [], kills0: this.nightKills0 ?? this.run.stats.kills, dawnT: this.dawnT || 0 }, level: lvl.snapshot() };
-    }
-    return { kind: 'camp', player };
-  }
-
-  // Put a saved snapshot back together. Returns false to fall back to camp.
-  resume(sc) {
-    const run = this.run;
-    const p = this.player;
-    const place = () => {
-      const q = sc.player;
-      if (!q) return;
-      p.pos.set(q.x, 0, q.z);
-      p.lastSafe.copy(p.pos);
-      p.yaw = q.yaw;
-      p.pitch = q.pitch || 0;
-      p.slot = q.slot || 0;
-      p.flashlight = q.flashlight ?? true;
-      if (q.stamina != null) p.stamina = q.stamina;
-      this.refreshViewModel();
-      this.updateCamera(0);
-    };
-    if (sc.kind === 'building') {
-      const loc = run.locality.locations.find((l) => l.id === sc.locId);
-      if (!loc) return false;
-      this.trip = { loc, found: sc.trip.found || [], recruits: sc.trip.recruits || [], kills: sc.trip.kills || 0, lost: sc.trip.lost || [] };
-      const comps = sc.level.followers.map((f) => run.survivors.find((s) => s.id === f.id)).filter((s) => s && s.hp > 0 && s.status !== 'dead');
-      this.disposeLevel();
-      new BuildingScene(this, loc, comps, sc.level);
-      p.resetTransient();
-      p.spawn(this.level.d.spawn);
-      place();
-      this.setEnvironment();
-      this.level.assignLights(this.torchLights, p.pos.x, p.pos.z);
-      this.audio.setMode('explore');
-      this.ui.banner(loc.name.toUpperCase(), 'Search resumed', 2.5);
-      return true;
-    }
-    if (sc.kind === 'night' && run.phase === 'night') {
-      this.enterCamp('night');
-      const n = sc.night || {};
-      this.nightReport = n.report || { lines: [], quiet: !sc.level?.wave };
-      this.nightLost = n.lost || [];
-      this.nightKills0 = n.kills0 ?? run.stats.kills;
-      this.level.spawnSurvivors();
-      this.level.setGate(false);
-      if (sc.level?.wave) {
-        this.level.restore(sc.level);
-        p.flashlight = true;
-        place();
-        this.dawnT = n.dawnT || 0;
-        if (!this.level.wave.active && !this.dawnT) this.dawnT = 1.5;
-        this.audio.setMode(this.level.wave.active ? 'chase' : 'explore');
-        this.ui.banner(`NIGHT ${run.day}`, this.level.wave.active ? 'Hold the camp!' : 'Dawn is coming.', 2.5);
-      } else {
-        // a quiet night: morning comes
-        this.state = 'sleeping';
-        this.quietT = 1.5;
-        this.ui.banner('A QUIET NIGHT', 'Nothing came out of the dark.', 2.5);
-      }
-      return true;
-    }
-    if (sc.kind === 'camp' && run.phase !== 'night') {
-      this.enterCamp('tent');
-      place();
-      this.ui.banner(`DAY ${run.day}`, run.locality.name, 3);
-      return true;
-    }
-    return false;
+    } else this.ui.banner(`DAY ${this.run.day}`, this.run.locality.name, 3);
   }
 
   disposeLevel() {
@@ -468,7 +294,7 @@ class Game {
       this.trip = null;
       if (run.hours <= 0) lines.push(...this.startDusk());
       else lines.push({ kind: 'gold', text: `${run.hours} hours of daylight left.` });
-      this.saveGame();
+      R.saveRun(run);
       this.audio.setMode('safe');
       this.openPanel('report', lines, 'BACK AT CAMP');
     });
@@ -503,11 +329,11 @@ class Game {
         this.setEnvironment();
         if (run.hours <= 0) {
           const lines = this.startDusk();
-          this.saveGame();
+          R.saveRun(run);
           this.openPanel('report', lines, 'DUSK');
           return;
         }
-        this.saveGame();
+        R.saveRun(run);
         this.ui.message(`${hours} ${hours === 1 ? 'hour passes' : 'hours pass'} by the fire.`, 'dim', 4);
         this.input.lock();
       },
@@ -611,7 +437,7 @@ class Game {
           setTimeout(() => this.playerDied('starvation'), 300);
           return;
         }
-        this.saveGame();
+        R.saveRun(run);
         this.ui.banner(`DAY ${run.day}`, `${run.locality.name}`, 3);
         this.openPanel('report', lines, `DAWN — DAY ${run.day}`);
       },
@@ -635,7 +461,7 @@ class Game {
         const lines = [{ text: `The train rolls into ${run.locality.name}.` }, { kind: 'muted', text: `${R.BIOMES[run.locality.biome].name} country. New places to search.` }];
         if (run.hours <= 0) lines.push(...this.startDusk());
         this.ui.banner(run.locality.name.toUpperCase(), R.BIOMES[run.locality.biome].name, 3.5);
-        this.saveGame();
+        R.saveRun(run);
         this.input.lock();
         // a wide look at the train in its new surroundings
         this.playShot({
@@ -663,9 +489,9 @@ class Game {
   }
 
   toTitle() {
-    this.saveGame();
+    const run = this.run;
+    if (run && this.level?.kind === 'camp' && run.phase !== 'night') R.saveRun(run);
     this.disposeLevel();
-    this.touch.exitGame();
     this.state = 'title';
     this.ui.showPause(false);
     this.ui.closePanel();
@@ -675,21 +501,10 @@ class Game {
     if (this.audio.ctx) this.audio.ctx.resume();
   }
 
-  // The page was hidden (another app, a locked screen, a closed tab).
-  onHidden() {
-    if (!this.run || !['playing', 'paused', 'panel', 'sleeping'].includes(this.state)) return;
-    this.saveGame();
-    if (this.state === 'playing') {
-      this.input.unlock();
-      if (this.state === 'playing') this.pause(true);
-    }
-  }
-
   pause(on) {
     if (on) {
       this.state = 'paused';
       this.ui.showPause(true);
-      this.ui.pauseNote(this);
       this.ui.toggleMap(false);
       if (this.audio.ctx) this.audio.ctx.suspend();
     } else {
@@ -700,13 +515,12 @@ class Game {
   }
 
   onKey(e) {
-    if (this.ui.slotsMode && e.code === 'Escape') return this.ui.openSlots(null);
     if (this.state === 'panel') {
       if (e.code === 'Escape' || e.code === 'KeyE') this.closePanel();
       return;
     }
-    if (this.state === 'gameover' && (e.code === 'Enter' || e.code === 'Space')) this.ui.openSlots('new');
-    if (this.state === 'title' && e.code === 'Enter' && !this.ui.slotsMode) S.lastSlot() >= 0 ? this.continueRun() : this.ui.openSlots('new');
+    if (this.state === 'gameover' && (e.code === 'Enter' || e.code === 'Space')) this.newRun();
+    if (this.state === 'title' && e.code === 'Enter') R.loadRun() ? this.continueRun() : this.newRun();
   }
 
   // ------------------------------------------------------------ panels
@@ -728,7 +542,7 @@ class Game {
     this.ui.closePanel();
     if (this.state === 'panel') this.state = 'playing';
     this.input.pressed.clear();
-    if (was && this.level?.kind === 'camp' && this.run.phase !== 'night') this.saveGame();
+    if (was && this.level?.kind === 'camp' && this.run.phase !== 'night') R.saveRun(this.run);
     if (relock && this.state === 'playing') this.input.lock();
   }
 
@@ -919,8 +733,7 @@ class Game {
     }
     this.placing = { type, error: null, ok: false };
     this.makeGhost();
-    const how = this.touch.active ? 'tap SET' : 'click';
-    this.ui.message(this.player.pos.x < this.level.bx + 1 ? `Walk out through the gate, then aim at the ground near you and ${how} to set a trap.` : `Aim at the ground near you and ${how} to set a trap.`, 'dim', 5);
+    this.ui.message(this.player.pos.x < this.level.bx + 1 ? 'Walk out through the gate, then aim at the ground near you and click to set a trap.' : 'Aim at the ground near you and click to set a trap.', 'dim', 5);
   }
 
   makeGhost() {
@@ -1088,10 +901,9 @@ class Game {
     this.audio.death();
     this.audio.setMode('dead');
     this.ui.toggleMap(false);
-    // permadeath: the run's save goes with you
-    if (this.run.permadeath !== false) S.deleteSlot(this.slot);
+    R.clearRun();
     setTimeout(() => {
-      if (this.state === 'dying') this.ui.showDeath(cause, this.run.permadeath !== false);
+      if (this.state === 'dying') this.ui.showDeath(cause);
     }, 900);
   }
 
@@ -1103,9 +915,7 @@ class Game {
     this.ui.hideDeath();
     this.ui.showHud(false);
     this.input.unlock();
-    this.touch.exitGame();
-    const reload = run.permadeath === false && S.readSlot(this.slot) ? this.slot : -1;
-    this.ui.showGameOver({ nights, waves: run.stats.waves, kills: run.stats.kills, searched: run.stats.searched, localities: run.stats.localities, recruited: run.stats.recruited, lost: run.stats.lost, level: run.player.level, best, reload });
+    this.ui.showGameOver({ nights, waves: run.stats.waves, kills: run.stats.kills, searched: run.stats.searched, localities: run.stats.localities, recruited: run.stats.recruited, lost: run.stats.lost, level: run.player.level, best });
   }
 
   anyHunting() {
@@ -1125,7 +935,6 @@ class Game {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.step(dt);
-    this.touch.update();
     if (this.level) this.env.update(dt);
     this.pipeline.render(dt, this.time);
     this.input.endFrame();
@@ -1451,12 +1260,5 @@ class Game {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  try {
-    window.__game = new Game();
-    document.getElementById('bootNote').style.display = 'none';
-  } catch (e) {
-    const gl = document.createElement('canvas').getContext('webgl2');
-    window.__bootFail(gl ? String(e && e.message ? e.message : e) : 'this browser has no WebGL 2, which the 3D view needs. Update the browser (iOS 15+ / a recent Chrome).');
-    throw e;
-  }
+  window.__game = new Game();
 });
