@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dread Depths</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=VT323&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --blood: #b3150f;
+    --blood-dark: #5a0805;
+    --bone: #e3d6bc;
+    --bone-dim: #9c8f78;
+    --gold: #f0b43a;
+    --ice: #6fd6ff;
+    --panel: rgba(12, 8, 6, 0.78);
+    --edge: #3a2a1c;
+    --title: 'IM Fell English SC', 'Times New Roman', serif;
+    --mono: 'VT323', 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: var(--bone); font-family: var(--mono); user-select: none; }
+  canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  canvas#game.retro { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+  /* ---------- screen-space overlays ---------- */
+  .overlay { position: fixed; inset: 0; pointer-events: none; }
+  #vignette { background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 75%, rgba(0,0,0,0.95) 100%); opacity: 0.8; }
+  #hurt { background: radial-gradient(ellipse at center, rgba(120,0,0,0) 30%, rgba(150,0,0,0.65) 85%, rgba(90,0,0,0.9) 100%); opacity: 0; }
+  #fade { background: #000; opacity: 0; }
+  #grain { opacity: 0.07; mix-blend-mode: overlay; background-size: 200px 200px; animation: grain 0.5s steps(4) infinite; }
+  @keyframes grain { 0% { background-position: 0 0; } 25% { background-position: -60px 40px; } 50% { background-position: 80px -30px; } 75% { background-position: -40px -90px; } 100% { background-position: 0 0; } }
+  #scan { background: repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0px, rgba(0,0,0,0.12) 1px, transparent 1px, transparent 3px); opacity: 0.5; }
+
+  /* hiding masks */
+  .mask { display: none; }
+  .mask.locker { display: block; background:
+      linear-gradient(90deg, #000 0 26%, transparent 26% 74%, #000 74% 100%),
+      repeating-linear-gradient(180deg, #050505 0 34px, rgba(0,0,0,0.0) 34px 52px); }
+  .mask.locker::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, #000 0 18%, transparent 18% 82%, #000 82%); }
+  .mask.closet { display: block; background: linear-gradient(90deg, #000 0 44%, rgba(0,0,0,0.25) 46% 54%, #000 56% 100%); }
+  .mask.bed, .mask.bench { display: block; background: linear-gradient(180deg, #000 0 42%, rgba(0,0,0,0.5) 50%, transparent 62%, transparent 92%, rgba(0,0,0,0.8)); }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.6s; text-shadow: 0 0 6px #000, 2px 2px 0 #000; }
+  #hud.show { opacity: 1; }
+  #hud.dim { opacity: 0.25; }
+  .tl { position: absolute; left: 22px; top: 18px; }
+  #lvl { font-family: var(--title); font-size: 34px; color: var(--bone); letter-spacing: 3px; }
+  .stat { font-size: 30px; line-height: 1.05; display: flex; align-items: center; gap: 10px; }
+  .stat .ico { width: 26px; text-align: center; }
+  .num { font-family: var(--mono); font-size: 1.1em; }
+  #dia { color: var(--ice); }
+  .stat.d .ico { color: var(--ice); }
+  #gold { color: var(--gold); }
+  .stat.g .ico { color: var(--gold); }
+
+  .tr { position: absolute; right: 18px; top: 16px; display: flex; flex-direction: column; align-items: flex-end; }
+  .mini-frame { padding: 5px; background: linear-gradient(135deg, #2c2016, #120c08); border: 2px solid var(--edge); box-shadow: 0 0 0 1px #000, 0 0 18px #000 inset; }
+  #minimap { width: 190px; height: 190px; display: block; image-rendering: pixelated; border: 1px solid #000; }
+  .mini-hint { font-size: 18px; color: var(--bone-dim); margin-top: 3px; }
+
+  .bl { position: absolute; left: 22px; bottom: 20px; width: min(340px, 40vw); }
+  #lives { font-size: 30px; color: var(--blood); letter-spacing: 4px; margin-bottom: 4px; text-shadow: 0 0 8px #600, 2px 2px 0 #000; }
+  .bar { position: relative; height: 22px; background: rgba(0,0,0,0.65); border: 2px solid var(--edge); margin-top: 6px; box-shadow: 0 0 0 1px #000; }
+  .bar .fill { position: absolute; left: 0; top: 0; bottom: 0; transition: width 0.15s; }
+  #hpFill { background: linear-gradient(180deg, #e0322a, #8a0a06 60%, #5a0503); }
+  #stFill { background: linear-gradient(180deg, #d8c48a, #8a7a40); }
+  #stFill.exhausted { background: linear-gradient(180deg, #8a6a5a, #4a3020); }
+  .bar .label { position: absolute; left: 8px; top: -2px; font-size: 21px; color: #fff; }
+  #hpText { position: absolute; right: 8px; top: -2px; font-size: 21px; }
+  .bar.st { height: 12px; }
+  #status { font-size: 20px; color: var(--bone-dim); margin-top: 5px; height: 20px; letter-spacing: 2px; }
+
+  #inv { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 8px; }
+  .slot { width: 72px; height: 72px; background: var(--panel); border: 2px solid var(--edge); position: relative; text-align: center; font-size: 26px; padding-top: 6px; box-shadow: 0 0 0 1px #000; }
+  .slot .ico { display: block; font-size: 24px; line-height: 24px; color: var(--bone); }
+  .slot b { position: absolute; left: 4px; top: 0; font-size: 16px; color: var(--gold); font-weight: normal; }
+  .slot small { position: absolute; left: 0; right: 0; bottom: 1px; font-size: 14px; color: var(--bone-dim); }
+  .slot.empty { opacity: 0.4; }
+
+  .br { position: absolute; right: 26px; bottom: 20px; text-align: right; }
+  #ammo { font-size: 46px; color: var(--bone); }
+  #ammoSub { font-size: 22px; color: var(--bone-dim); }
+  .gunico { font-size: 20px; color: var(--bone-dim); letter-spacing: 2px; }
+
+  #cross { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: rgba(230,214,188,0.7); border-radius: 50%; box-shadow: 0 0 3px #000; }
+  #prompt { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-size: 28px; opacity: 0; transition: opacity 0.12s; white-space: nowrap; background: rgba(0,0,0,0.45); padding: 2px 14px; border-left: 2px solid var(--blood); border-right: 2px solid var(--blood); }
+  #prompt b { color: var(--gold); border: 1px solid var(--gold); padding: 0 6px; margin-right: 6px; font-weight: normal; }
+  #prompt i { color: var(--bone-dim); font-style: normal; }
+
+  #msgs { position: absolute; left: 50%; top: 16%; transform: translateX(-50%); width: 80vw; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .msg { font-size: 26px; color: var(--bone); background: rgba(0,0,0,0.35); padding: 0 12px; }
+  .msg.gold { color: var(--gold); }
+  .msg.good { color: #b6e08a; }
+  .msg.bad { color: #ff5a4a; }
+  .msg.dim { color: var(--bone-dim); }
+  .msg.diamond { color: var(--ice); }
+
+  #banner { position: absolute; left: 0; right: 0; top: 30%; text-align: center; opacity: 0; transition: opacity 0.8s; }
+  #banner.show { opacity: 1; }
+  #bannerT { font-family: var(--title); font-size: clamp(42px, 8vw, 92px); color: var(--blood); letter-spacing: 8px; text-shadow: 0 0 20px #000, 0 0 40px #400, 3px 3px 0 #000; }
+  #bannerS { font-size: 32px; color: var(--bone); margin-top: 4px; }
+
+  /* ---------- full screens ---------- */
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; text-align: center; background: radial-gradient(ellipse at center, rgba(20,6,4,0.82), rgba(0,0,0,0.96)); z-index: 10; }
+  .screen.show { display: flex; }
+  .screen h1 { font-family: var(--title); font-weight: normal; color: var(--blood); font-size: clamp(54px, 11vw, 132px); margin: 0; letter-spacing: 10px; text-shadow: 0 0 30px #300, 0 6px 0 #000; }
+  .screen h2 { font-family: var(--title); font-weight: normal; color: var(--bone); font-size: clamp(22px, 3vw, 34px); margin: 4px 0 18px; letter-spacing: 3px; }
+  .screen p { font-size: 24px; color: var(--bone-dim); max-width: 760px; margin: 6px 20px; }
+  .btn { pointer-events: auto; font-family: var(--title); font-size: 30px; color: var(--bone); background: linear-gradient(180deg, #3a1008, #1a0604); border: 2px solid #6a2010; padding: 8px 34px; margin: 10px; cursor: pointer; letter-spacing: 3px; box-shadow: 0 0 0 1px #000, 0 0 25px rgba(140,10,0,0.25); }
+  .btn:hover { color: #fff; border-color: var(--blood); box-shadow: 0 0 0 1px #000, 0 0 30px rgba(200,20,0,0.5); }
+  .controls { display: grid; grid-template-columns: auto auto auto auto; gap: 2px 18px; font-size: 22px; color: var(--bone-dim); margin: 18px auto 8px; text-align: left; }
+  .controls b { color: var(--gold); font-weight: normal; text-align: right; }
+  .bestiary { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; max-width: 980px; margin: 10px 20px; }
+  .beast { width: 220px; background: rgba(0,0,0,0.5); border: 1px solid var(--edge); padding: 6px 10px; text-align: left; }
+  .beast h3 { margin: 0; font-family: var(--title); font-weight: normal; color: var(--blood); font-size: 22px; }
+  .beast div { font-size: 18px; color: var(--bone-dim); line-height: 1.05; }
+  #bestLine { color: var(--gold); font-size: 24px; min-height: 26px; }
+  #title { background: radial-gradient(ellipse at 50% 40%, rgba(40,4,2,0.92), rgba(0,0,0,0.99) 70%); overflow-y: auto; justify-content: flex-start; padding: 4vh 0; }
+  #title h1 { animation: flicker 6s infinite; margin-top: 2vh; }
+  @keyframes flicker { 0%, 100% { opacity: 1; } 47% { opacity: 1; } 48% { opacity: 0.4; } 49% { opacity: 1; } 72% { opacity: 0.85; } 73% { opacity: 0.2; } 74% { opacity: 1; } }
+
+  .settings { display: grid; grid-template-columns: auto 220px; gap: 8px 16px; font-size: 24px; margin: 12px; align-items: center; text-align: left; pointer-events: auto; }
+  .settings input[type=range] { accent-color: var(--blood); }
+  .settings input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--blood); }
+
+  /* shop */
+  #shop { background: radial-gradient(ellipse at center, rgba(30,16,8,0.9), rgba(0,0,0,0.96)); }
+  #shop h1 { font-size: clamp(40px, 6vw, 72px); color: #c98a3a; letter-spacing: 6px; }
+  .shop-head { display: flex; gap: 40px; align-items: baseline; justify-content: center; font-size: 30px; }
+  .shop-head .g { color: var(--gold); font-size: 40px; }
+  #shopItems { display: grid; grid-template-columns: repeat(5, minmax(150px, 190px)); gap: 10px; margin: 16px; }
+  .card { pointer-events: auto; position: relative; background: linear-gradient(180deg, #24170e, #120a06); border: 2px solid #4a3220; color: var(--bone); font-family: var(--mono); padding: 10px 8px 8px; cursor: pointer; text-align: center; min-height: 196px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 0 0 1px #000; }
+  .card:hover:not(:disabled) { border-color: var(--gold); box-shadow: 0 0 0 1px #000, 0 0 18px rgba(240,180,58,0.3); }
+  .card .key { position: absolute; left: 6px; top: 2px; font-size: 18px; color: var(--bone-dim); }
+  .card .icon { font-size: 34px; color: var(--gold); height: 40px; }
+  .card .name { font-family: var(--title); font-size: 21px; color: var(--bone); }
+  .card .desc { font-size: 17px; color: var(--bone-dim); line-height: 1.05; flex: 1; margin: 4px 0; }
+  .card .tier { font-size: 17px; color: #9ab07a; }
+  .card .price { font-size: 26px; color: var(--gold); }
+  .card.poor .price { color: #8a3a2a; }
+  .card:disabled { cursor: default; opacity: 0.55; }
+  .card.maxed { opacity: 0.35; }
+  .keeper-quote { font-family: var(--title); font-size: 22px; color: #a08060; font-style: italic; margin-top: 4px; }
+
+  /* map */
+  #mapScreen { background: rgba(0,0,0,0.88); }
+  #bigmap { image-rendering: pixelated; border: 3px solid var(--edge); box-shadow: 0 0 0 1px #000, 0 0 40px #000; max-width: 92vw; max-height: 78vh; }
+  #mapScreen h2 { margin-top: 0; }
+  .legend { font-size: 20px; color: var(--bone-dim); margin-top: 8px; }
+  .legend span { margin: 0 10px; }
+
+  #death { background: radial-gradient(ellipse at center, rgba(80,0,0,0.55), rgba(0,0,0,0.92)); pointer-events: none; }
+  #death h1 { animation: none; }
+  #deathCause { font-size: 32px; color: var(--bone); }
+  #deathSub { font-size: 24px; }
+  #gameover h1 { font-size: clamp(40px, 8vw, 96px); }
+  #goStats { display: grid; gap: 4px; font-size: 28px; margin: 14px; min-width: 360px; }
+  #goStats div { display: flex; justify-content: space-between; gap: 30px; border-bottom: 1px solid #2a1a10; }
+  #goStats b { color: var(--gold); font-weight: normal; }
+  #goStats .best b { color: var(--ice); }
+
+  @media (max-width: 900px) { #shopItems { grid-template-columns: repeat(3, 1fr); } .controls { grid-template-columns: auto auto; } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="overlay mask" id="hideMask"></div>
+<div class="overlay" id="vignette"></div>
+<div class="overlay" id="scan"></div>
+<div class="overlay" id="grain"></div>
+<div class="overlay" id="hurt"></div>
+
+<div id="hud">
+  <div class="tl">
+    <div id="lvl">LEVEL 1</div>
+    <div class="stat d"><span class="ico">◆</span><span id="dia">0 / 1</span></div>
+    <div class="stat g"><span class="ico">⛁</span><span id="gold">0</span></div>
+  </div>
+  <div class="tr">
+    <div class="mini-frame"><canvas id="minimap" width="190" height="190"></canvas></div>
+    <div class="mini-hint">[M] map</div>
+  </div>
+  <div class="bl">
+    <div id="lives">☠☠☠</div>
+    <div class="bar"><div class="fill" id="hpFill"></div><span class="label">HEALTH</span><span id="hpText">100 / 100</span></div>
+    <div class="bar st"><div class="fill" id="stFill"></div></div>
+    <div id="status"></div>
+  </div>
+  <div id="inv"></div>
+  <div class="br">
+    <div class="gunico">REVOLVER</div>
+    <div id="ammo">6 / 6</div>
+    <div id="ammoSub">6 spare</div>
+  </div>
+  <div id="cross"></div>
+  <div id="prompt"></div>
+  <div id="msgs"></div>
+  <div id="banner"><div id="bannerT"></div><div id="bannerS"></div></div>
+</div>
+
+<div class="overlay" id="fade"></div>
+
+<div class="screen show" id="title">
+  <h1>DREAD DEPTHS</h1>
+  <h2>How deep will you descend before the dark claims you?</h2>
+  <p>Each level hides diamonds in a lightless labyrinth. Find them all, return to the sanctuary and descend. Gold scattered in the dark buys survival from the Keeper. You have three lives.</p>
+  <button class="btn" id="startBtn">DESCEND</button>
+  <div id="bestLine"></div>
+  <div class="controls">
+    <b>WASD</b><span>Move</span><b>Mouse</b><span>Look</span>
+    <b>Shift</b><span>Run</span><b>Space</b><span>Jump</span>
+    <b>C</b><span>Crouch (quiet)</span><b>E</b><span>Interact / hide</span>
+    <b>F</b><span>Flashlight</span><b>Click</b><span>Fire revolver</span>
+    <b>R</b><span>Reload</span><b>H</b><span>Use med kit</span>
+    <b>T</b><span>Set bear trap</span><b>M / Tab</b><span>Map</span>
+  </div>
+  <div class="bestiary">
+    <div class="beast"><h3>Grunt</h3><div>Patrols the halls. Sees well, almost as fast as you — but can be outrun. Hide before it sees you.</div></div>
+    <div class="beast"><h3>Angel</h3><div>Moves only when unseen. Keep your eyes — and your light — on it. Cannot be killed. Its touch is death.</div></div>
+    <div class="beast"><h3>Blind Brute</h3><div>Hunts by sound. Walk softly, crouch, avoid broken glass. Shoot it and it charges. It hates Grunts.</div></div>
+    <div class="beast"><h3>Blood Hound</h3><div>Its shriek summons the others. Hiding will not fool a hound that is already on your trail.</div></div>
+  </div>
+</div>
+
+<div class="screen" id="pause">
+  <h1>PAUSED</h1>
+  <div class="settings">
+    <span>Mouse sensitivity</span><input type="range" id="setSens" min="0.2" max="3" step="0.05" />
+    <span>Master volume</span><input type="range" id="setMaster" min="0" max="1" step="0.01" />
+    <span>Music volume</span><input type="range" id="setMusic" min="0" max="1" step="0.01" />
+    <span>Effects volume</span><input type="range" id="setSfx" min="0" max="1" step="0.01" />
+    <span>Retro pixel rendering</span><input type="checkbox" id="setRetro" />
+  </div>
+  <button class="btn" id="resumeBtn">RESUME</button>
+  <button class="btn" id="quitBtn">ABANDON RUN</button>
+  <div class="controls">
+    <b>WASD</b><span>Move</span><b>Shift</b><span>Run</span>
+    <b>Space</b><span>Jump</span><b>C</b><span>Crouch</span>
+    <b>E</b><span>Interact / hide</span><b>F</b><span>Flashlight</span>
+    <b>Click</b><span>Fire</span><b>R</b><span>Reload</span>
+    <b>H</b><span>Med kit</span><b>T</b><span>Bear trap</span>
+  </div>
+</div>
+
+<div class="screen" id="shop">
+  <h1>THE KEEPER'S WARES</h1>
+  <div class="keeper-quote">"Gold for flesh, gold for breath. Everything has its price down here."</div>
+  <div class="shop-head"><span id="shopLevel">Level 1</span><span>Your gold: <span class="g" id="shopGold">0</span></span></div>
+  <div id="shopItems"></div>
+  <p>Click an item or press its number to buy. Prices rise the deeper you go.</p>
+  <button class="btn" id="shopClose">LEAVE [E]</button>
+</div>
+
+<div class="screen" id="mapScreen">
+  <h2>MAP</h2>
+  <canvas id="bigmap"></canvas>
+  <div class="legend"><span style="color:#ffe8a0">▲ You</span><span style="color:#5fd8ff">◆ Diamond</span><span style="color:#3f7a46">■ Sanctuary</span><span style="color:#ff5a3a">■ Hatch</span><span style="color:#8a1c1c">■ Pit</span><span style="color:#8a9aa8">■ Glass</span></div>
+  <div class="legend" id="mapLegend"></div>
+</div>
+
+<div class="screen" id="death">
+  <h1>YOU DIED</h1>
+  <div id="deathCause"></div>
+  <p id="deathSub"></p>
+</div>
+
+<div class="screen" id="gameover">
+  <h1>THE DARK CLAIMS YOU</h1>
+  <div id="goStats"></div>
+  <button class="btn" id="retryBtn">DESCEND AGAIN</button>
+</div>
+
+<script>
+  // film grain texture
+  (function () {
+    var c = document.createElement('canvas');
+    c.width = c.height = 200;
+    var x = c.getContext('2d');
+    var d = x.createImageData(200, 200);
+    for (var i = 0; i < d.data.length; i += 4) {
+      var v = Math.random() * 255;
+      d.data[i] = d.data[i + 1] = d.data[i + 2] = v;
+      d.data[i + 3] = 255;
+    }
+    x.putImageData(d, 0, 0);
+    document.getElementById('grain').style.backgroundImage = 'url(' + c.toDataURL() + ')';
+  })();
+</script>
+<script src="dist/game.js"></script>
+</body>
+</html>
