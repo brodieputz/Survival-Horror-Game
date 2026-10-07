@@ -547,7 +547,7 @@ export function buildExterior(scene) {
   if (G) {
     group.add(
       makeGrass({
-        count: G[0],
+        count: Math.round(G[0] * (scene.game.pipeline.Q?.detail ?? 1)),
         color: G[1],
         height: G[2],
         x0: SX0 - 45,

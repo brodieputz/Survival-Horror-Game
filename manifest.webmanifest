@@ -1,0 +1,10 @@
+{
+  "name": "Dread Depths",
+  "short_name": "Dread Depths",
+  "description": "Hold your camp beside the stalled train. Scavenge by day, survive the night.",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}

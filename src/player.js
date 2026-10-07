@@ -177,6 +177,13 @@ export class Player {
     if (input.down('KeyS') || input.down('ArrowDown')) mz += 1;
     if (input.down('KeyA') || input.down('ArrowLeft')) mx -= 1;
     if (input.down('KeyD') || input.down('ArrowRight')) mx += 1;
+    // the touch stick is analog: a light push walks slowly
+    let analog = 1;
+    if (input.stick) {
+      mx = input.moveX;
+      mz = input.moveY;
+      analog = Math.max(0.3, Math.min(1, Math.hypot(mx, mz)));
+    }
     const len = Math.hypot(mx, mz);
     if (len > 0) {
       mx /= len;
@@ -206,7 +213,7 @@ export class Player {
     }
 
     let speed = this.crouch ? PLAYER.crouch : this.running ? PLAYER.run : PLAYER.walk;
-    speed *= this.speedMul;
+    speed *= this.speedMul * (this.running ? 1 : analog);
     const wdef = this.weaponDef();
     if (wdef.cat === 'lmg' || wdef.cat === 'launcher') speed *= 0.88;
     if (this.trapped > 0) {
@@ -389,7 +396,8 @@ export class Player {
     g.audio.weaponFire(def);
     g.muzzleFlash(def);
     const origin = g.camera.getWorldPosition(new THREE.Vector3());
-    const fwd = g.camera.getWorldDirection(new THREE.Vector3());
+    let fwd = g.camera.getWorldDirection(new THREE.Vector3());
+    if (g.touch?.active && def.cat !== 'flame' && def.cat !== 'thrown') fwd = this.aimAssist(origin, fwd, st.range);
     if (def.cat === 'flame') {
       g.combat.flame(this, origin.clone().addScaledVector(fwd, 0.4).add(new THREE.Vector3(0, -0.2, 0)), fwd, { range: st.range, dmg: st.dmg, spread: st.spread });
     } else if (def.proj) {
@@ -414,6 +422,28 @@ export class Player {
     if (def.noise) g.emitNoise(this.pos.x, this.pos.z, def.noise, 'gun');
     if (inst.mag <= 0 && this.canReload(def) && def.cat !== 'thrown') setTimeout(() => this.startReload(), 250);
     if (def.cat === 'thrown' && inst.mag <= 0) this.startReload();
+  }
+
+  // On a touch screen, shots bend a few degrees toward the zombie nearest the
+  // crosshair (more up close), the way mobile shooters help thumbs aim.
+  aimAssist(origin, fwd, range) {
+    const lvl = this.game.level;
+    let best = null;
+    let bestScore = 1;
+    for (const e of lvl.enemies) {
+      if (!e.alive) continue;
+      const tx = e.pos.x - origin.x;
+      const tz = e.pos.z - origin.z;
+      const ty = (e.pos.y || 0) + (e.model.height || 1.6) * 0.62 - origin.y;
+      const d = Math.hypot(tx, ty, tz);
+      if (d > range || d < 0.4) continue;
+      const a = Math.acos(Math.min(1, (tx * fwd.x + ty * fwd.y + tz * fwd.z) / d));
+      const score = a / Math.max(0.05, Math.min(0.14, 0.9 / d));
+      if (score >= bestScore || !lvl.world.los(origin.x, origin.z, e.pos.x, e.pos.z)) continue;
+      bestScore = score;
+      best = new THREE.Vector3(tx / d, ty / d, tz / d);
+    }
+    return best ? fwd.clone().lerp(best, 0.8).normalize() : fwd;
   }
 
   spreadDir(fwd, spread) {

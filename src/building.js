@@ -32,13 +32,19 @@ const CONTAINER_LABEL = {
 };
 
 export class BuildingScene {
-  constructor(game, loc, companions) {
+  // snap: a saved snapshot of this search to resume (see snapshot()).
+  constructor(game, loc, companions, snap = null) {
     this.game = game;
     this.kind = 'building';
     game.level = this;
     this.loc = loc;
     this.L = LOCATION_TYPES[loc.type];
-    this.d = generateBuilding(loc, game.run.locality.biome);
+    // The layout depends on how many survivors were inside when the search
+    // began, so a resumed search rebuilds it from that original list.
+    const run = game.run;
+    const findRec = (id) => loc.survivors.find((r) => r.id === id) || run.survivors.find((r) => r.id === id) || null;
+    this.entry = snap ? snap.entry.map(findRec) : loc.survivors.slice();
+    this.d = generateBuilding({ ...loc, survivors: this.entry }, run.locality.biome);
     this.rng = new RNG((loc.seed ^ 0x9e3779b9) >>> 0);
     this.world = new World(this.d);
     this.group = new THREE.Group();
@@ -73,21 +79,81 @@ export class BuildingScene {
     this.buildTraps();
     this.buildLamps();
     this.buildDecor();
-    for (const e of this.d.enemies) this.enemies.push(new Enemy(game, e.type, e.x, e.z, { group: this.group }));
+    for (const e of snap ? snap.enemies : this.d.enemies) {
+      const en = new Enemy(game, e.type, e.x, e.z, { group: this.group });
+      if (e.hp != null) en.hp = Math.min(en.maxHp, e.hp);
+      if (e.yaw != null) en.yaw = e.yaw;
+      this.enemies.push(en);
+    }
     for (const s of this.d.survivors) {
-      const rec = loc.survivors[s.idx];
-      if (!rec) continue;
+      const rec = this.entry[s.idx];
+      // still waiting to be found (not recruited, not dead)
+      if (!rec || rec.status !== 'found' || rec.hp <= 0 || !loc.survivors.includes(rec)) continue;
       const a = new SurvivorActor(game, rec, s.x, s.z, 'found', this.group);
       this.found.push(a);
     }
     // companions arrive with the player
     companions.forEach((rec, i) => {
       const sp = this.d.spawn;
-      const a = new SurvivorActor(game, rec, sp.x + (i % 2 ? 1.2 : -1.2), sp.z - 1.2 - Math.floor(i / 2) * 1.2, 'follow', this.group);
+      const at = snap?.followers.find((f) => f.id === rec.id);
+      const a = new SurvivorActor(game, rec, at ? at.x : sp.x + (i % 2 ? 1.2 : -1.2), at ? at.z : sp.z - 1.2 - Math.floor(i / 2) * 1.2, 'follow', this.group);
       this.actors.push(a);
     });
     for (let y = this.d.yard.y - 1; y <= this.d.yard.y + this.d.yard.h; y++)
       for (let x = this.d.yard.x - 1; x <= this.d.yard.x + this.d.yard.w; x++) this.markExplored(x, y);
+    if (snap) this.restore(snap);
+  }
+
+  // ------------------------------------------------------------ save / resume
+  // Everything about this search that isn't already in the run: who was
+  // inside at the start, the zombies, which containers are open, sprung
+  // traps, where companions stand, and how much of the map is explored.
+  snapshot() {
+    const bits = String.fromCharCode(...this.explored);
+    return {
+      entry: this.entry.map((r) => r?.id ?? -1),
+      enemies: this.enemies.filter((e) => e.alive).map((e) => ({ type: e.type, x: +e.pos.x.toFixed(2), z: +e.pos.z.toFixed(2), hp: Math.ceil(e.hp), yaw: +(e.yaw || 0).toFixed(2) })),
+      opened: this.containers.filter((c) => c.opened).map((c) => c.idx),
+      bear: this.bearTraps.map((b) => (b.armed ? 1 : 0)),
+      wires: this.wires.map((w) => (w.triggered ? 1 : 0)),
+      followers: this.actors.filter((a) => a.alive).map((a) => ({ id: a.rec.id, x: +a.pos.x.toFixed(2), z: +a.pos.z.toFixed(2) })),
+      explored: btoa(bits),
+    };
+  }
+
+  restore(snap) {
+    for (const c of this.containers)
+      if (snap.opened.includes(c.idx)) {
+        c.opened = true;
+        c.seen = true;
+        c.open = 0.999; // swings the rest of the way open on the first frame
+      }
+    snap.bear.forEach((armed, i) => {
+      const b = this.bearTraps[i];
+      if (b && !armed) {
+        b.armed = false;
+        M.setBearTrapOpen(b.jaws, false);
+      }
+    });
+    snap.wires.forEach((hit, i) => {
+      const w = this.wires[i];
+      if (w && hit) {
+        w.triggered = true;
+        w.t = 99;
+        w.wire.visible = false;
+        w.spikes.visible = false;
+      }
+    });
+    try {
+      const bits = atob(snap.explored || '');
+      for (let i = 0; i < bits.length && i < this.explored.length; i++)
+        if (bits.charCodeAt(i)) {
+          const x = i % this.d.W;
+          this.markExplored(x, (i - x) / this.d.W);
+        }
+    } catch (e) {
+      /* an old or damaged map just starts unexplored */
+    }
   }
 
   // ------------------------------------------------------------ build

@@ -18,7 +18,7 @@ const INDOOR = {
   env: 0.03,
   exposure: 1.35,
 };
-const SHADOW = { cinematic: [4096, 55], balanced: [2048, 45], retro: [1024, 40] };
+const SHADOW = { cinematic: [4096, 55], balanced: [2048, 45], performance: [1024, 36], retro: [1024, 40] };
 const UP = new THREE.Vector3(0, 1, 0);
 const vA = new THREE.Vector3();
 const vB = new THREE.Vector3();

@@ -278,10 +278,11 @@ export function removeWeapon(run, uid) {
 }
 
 // ---------------------------------------------------------------- new run
-export function newRun(seed = (Math.random() * 0xffffffff) >>> 0) {
+export function newRun(seed = (Math.random() * 0xffffffff) >>> 0, { permadeath = true } = {}) {
   const run = {
     version: 3,
     seed,
+    permadeath,
     day: 1,
     hours: DAY_HOURS,
     phase: 'day',
@@ -752,14 +753,8 @@ export function travel(run, opt) {
 }
 
 // ---------------------------------------------------------------- persistence
-export function saveRun(run) {
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(run));
-  } catch (e) {
-    /* storage unavailable */
-  }
-}
-export function loadRun() {
+// The single save from before save slots existed; read once to migrate it.
+export function loadLegacyRun() {
   try {
     const s = localStorage.getItem(SAVE_KEY);
     if (!s) return null;
@@ -770,8 +765,15 @@ export function loadRun() {
     return null;
   }
 }
+export function clearLegacyRun() {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch (e) {
+    /* ignore */
+  }
+}
 // Bring older saves up to date (shared ammo pools, food, region profiles).
-function migrateRun(run) {
+export function migrateRun(run) {
   if (run.version === 2) {
     const a = run.ammo;
     const move = (from, to, k = 1) => {
@@ -792,16 +794,10 @@ function migrateRun(run) {
     run.region = { options: regionalOptions(run) };
     run.version = 3;
   }
+  run.permadeath = run.permadeath ?? true;
   return run;
 }
 
-export function clearRun() {
-  try {
-    localStorage.removeItem(SAVE_KEY);
-  } catch (e) {
-    /* ignore */
-  }
-}
 export function bestNights() {
   try {
     return parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0;
