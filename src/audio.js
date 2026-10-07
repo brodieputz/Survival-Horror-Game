@@ -613,6 +613,14 @@ export class AudioSys {
         break;
     }
   }
+  // brass bouncing on the floor
+  casing(pos) {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(pos, 0.35, { reverb: 0.2, max: 20 });
+    for (let i = 0; i < 2; i++) this.osc('sine', 3800 + Math.random() * 1800, t + i * 0.07, 0.06, o, { gain: 0.12 - i * 0.04 });
+  }
+
   // a dog's bark (or a snarl as it bites)
   bark(pos, bite = false) {
     if (!this.ok()) return;

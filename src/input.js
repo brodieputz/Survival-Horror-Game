@@ -9,6 +9,7 @@ export class Input {
     this.mouseDY = 0;
     this.mouseDown = false;
     this.clicked = false;
+    this.aimDown = false; // right mouse: aim down the sights
     this.wheel = 0;
     this.locked = false;
     this.sensitivity = 1;
@@ -35,6 +36,10 @@ export class Input {
         this.mouseDown = true;
         this.clicked = true;
       }
+      if (e.button === 2 && this.locked) this.aimDown = true;
+    });
+    document.addEventListener('contextmenu', (e) => {
+      if (this.locked || e.target === this.canvas) e.preventDefault();
     });
     document.addEventListener(
       'wheel',
@@ -45,10 +50,15 @@ export class Input {
     );
     document.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.mouseDown = false;
+      if (e.button === 2) this.aimDown = false;
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.canvas;
-      if (!this.locked) this.keys.clear();
+      if (!this.locked) {
+        this.keys.clear();
+        this.aimDown = false;
+        this.mouseDown = false;
+      }
       this.onLockChange?.(this.locked);
     });
     document.addEventListener('pointerlockerror', () => {

@@ -6,10 +6,11 @@ import { Player } from './player.js';
 import { AudioSys } from './audio.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
-import { Particles } from './fx.js';
+import { Particles, Casings } from './fx.js';
 import { Combat } from './combat.js';
 import { Enemy } from './enemies.js';
-import { makeViewModel, makeFistsViewModel, makeGunModel } from './gunModels.js';
+import { makeGunModel } from './gunModels.js';
+import { makeViewModel, makeFistsViewModel, ViewModelAnim, isScoped, aimFov } from './viewmodel.js';
 import { Environment } from './env.js';
 import { Pipeline, QUALITY } from './render.js';
 import { setAnisotropy } from './textures.js';
@@ -84,6 +85,9 @@ class Game {
     this.camera.add(this.muzzle);
     this.vm = null;
     this.particles = new Particles(this.scene);
+    this.casings = new Casings(this.scene);
+    this.casings.onBounce = (pos) => this.audio.casing?.(pos);
+    this.vmAnim = new ViewModelAnim();
     this.combat = new Combat(this);
 
     this.audio = new AudioSys();
@@ -181,8 +185,30 @@ class Game {
   refreshViewModel() {
     if (this.vm) this.camera.remove(this.vm.group);
     const w = this.player?.weapon();
-    this.vm = w ? makeViewModel(WEAPONS[w.id]) : makeFistsViewModel();
+    const def = w ? WEAPONS[w.id] : null;
+    this.vm = def ? makeViewModel(def) : makeFistsViewModel();
+    this.vm.ejectNow = () => def && this.ejectCasing(def);
+    this.vmAnim.reset();
     this.camera.add(this.vm.group);
+  }
+
+  // A shot left the barrel: the view model kicks and cycles, brass flies.
+  onWeaponFired(def, emptyNow) {
+    const vm = this.vm;
+    if (!vm || vm.def !== def) return;
+    this.vmAnim.fire(vm, def, emptyNow);
+    if (ViewModelAnim.ejectsOnFire(def, vm)) this.ejectCasing(def);
+  }
+
+  ejectCasing(def) {
+    const vm = this.vm;
+    if (!vm?.model?.port) return;
+    const cam = this.camera;
+    const pos = vm.model.port.getWorldPosition(new THREE.Vector3());
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+    const up = new THREE.Vector3(0, 1, 0);
+    const fwd = cam.getWorldDirection(new THREE.Vector3());
+    this.casings.eject(pos, right, up, fwd, def.cat === 'shotgun');
   }
 
   muzzleFlash(def) {
@@ -238,6 +264,7 @@ class Game {
       this.level = null;
     }
     this.combat.clear();
+    this.casings.clear();
     this.ui.toggleMap(false);
   }
 
@@ -1001,6 +1028,7 @@ class Game {
       this.updateLights(dt);
       this.updateAudio(dt);
       this.particles.update(dt);
+      this.casings.update(dt, 0);
       this.shriekMsgCd -= dt;
       this.ui.update(dt);
     } else if (s === 'transition') {
@@ -1199,40 +1227,39 @@ class Game {
     const sh = p.shake * 0.06;
     cam.position.x += (Math.random() - 0.5) * sh;
     cam.position.y += (Math.random() - 0.5) * sh;
-    cam.rotation.set(p.pitch + p.recoil * 0.05 + (Math.random() - 0.5) * sh * 0.5, p.yaw, roll);
-    const targetFov = p.running && p.moving ? 79 : 72;
-    this.fov = damp(this.fov, targetFov, 6, dt);
+    // the view model works out how far up the sights are first
+    const vm = this.vm;
+    if (vm) this.vmAnim.update(this, vm, p, dt, this.input.aimDown && this.state === 'playing');
+    const ads = vm ? this.vmAnim.ads : 0;
+    cam.rotation.set(p.pitch + p.punch + (Math.random() - 0.5) * sh * 0.5, p.yaw, roll * (1 - ads * 0.8));
+    const def = vm?.def;
+    const targetFov = p.running && p.moving ? 79 : 72 + ((def ? aimFov(def) : 72) - 72) * ads;
+    this.fov = damp(this.fov, targetFov, 10, dt);
     if (Math.abs(cam.fov - this.fov) > 0.01) {
       cam.fov = this.fov;
       cam.updateProjectionMatrix();
     }
+    // through a scope the gun leaves the picture
+    const scoped = def && isScoped(def) && ads > 0.9;
+    document.body.classList.toggle('scoped', !!scoped);
+    this.ui.el.cross.style.opacity = (1 - Math.min(1, ads * 1.6)).toFixed(2);
 
-    const vm = this.vm;
     if (!vm) return;
-    vm.group.visible = p.alive && !p.hidden;
-    const bob = this.bobAmt || 0;
+    vm.group.visible = p.alive && !p.hidden && !scoped;
+    const bob = (this.bobAmt || 0) * (1 - ads * 0.85);
     // the weapon lags behind the view as it turns, and rises and falls with breathing
     this.swayX = damp(this.swayX || 0, clamp(-(p.turnX || 0) * 0.011, -0.045, 0.045), 10, dt);
     this.swayY = damp(this.swayY || 0, clamp((p.turnY || 0) * 0.011, -0.035, 0.035), 10, dt);
     const breath = Math.sin(this.time * 1.7) * 0.0035;
     vm.group.position.set(Math.cos(p.bob * 0.5) * bob * 0.5 + this.swayX, Math.sin(p.bob) * bob * 0.6 - (p.crouch ? 0.02 : 0) + this.swayY + breath + (this.dip || 0) * 0.25, 0);
     vm.group.rotation.set(this.swayY * 1.2, this.swayX * 1.6, this.swayX * 1.1);
-    const rel = p.reloading > 0 ? Math.sin((1 - p.reloading / p.reloadTotal) * Math.PI) : 0;
-    const sw = p.switchT / 0.35;
-    const base = vm.basePos;
-    const def = vm.def;
-    if (!def || def.cat === 'melee') {
-      const k = p.swing;
-      const arc = Math.sin(k * Math.PI);
-      vm.gun.rotation.set(-arc * 1.1 + k * 0.4, arc * 0.5, -arc * 0.5);
-      vm.gun.position.set(base[0] - arc * 0.12, base[1] + arc * 0.05 - sw * 0.3, base[2] - arc * 0.1);
-    } else {
-      vm.gun.rotation.set(p.recoil * 0.22 + rel * 0.6, 0, -rel * 0.9);
-      vm.gun.position.set(base[0], base[1] - rel * 0.12 - sw * 0.3, base[2] + p.recoil * 0.05);
+    if (ads > 0) {
+      // steady the sights: less sway and breathing when aiming
+      vm.group.position.multiplyScalar(1 - ads * 0.8);
+      vm.group.rotation.x *= 1 - ads * 0.8;
+      vm.group.rotation.y *= 1 - ads * 0.8;
+      vm.group.rotation.z *= 1 - ads * 0.9;
     }
-    vm.flash.material.opacity = Math.max(0, vm.flash.material.opacity - dt * 14);
-    if (vm.lens) vm.lens.material.color.setHex(p.flashlight ? 0xfff2cc : 0x222222);
-    if (vm.model.spin) vm.model.spin.rotation.z += dt * (p.spin > 0 ? 40 * (p.spin / (def.spinUp || 1)) : 0);
   }
 
   updateLights(dt) {

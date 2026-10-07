@@ -5,6 +5,7 @@ import { PLAYER, NOISE, TILE, WALL_H, PIT_DEPTH, T, BATTERY_LIFE } from './confi
 import { clamp, damp, angleDiff } from './util.js';
 import { WEAPONS, weaponStats, AMMO } from './weapons.js';
 import { weaponByUid, playerMaxHp, playerMaxStamina, playerSpeedMul } from './run.js';
+import { RECOIL } from './viewmodel.js';
 
 const HIDE_CAM = {
   locker: { y: 1.5, fwd: -0.02, yawLim: 0.55, pitchMin: -0.35, pitchMax: 0.25 },
@@ -73,6 +74,8 @@ export class Player {
     this.reloadTotal = 1;
     this.fireCd = 0;
     this.recoil = 0;
+    this.punch = 0; // the view's recoil kick, on a spring
+    this.punchV = 0;
     this.swing = 0;
     this.pendingSwing = 0;
     this.spin = 0;
@@ -149,7 +152,10 @@ export class Player {
     this.swing = Math.max(0, this.swing - dt * 3.2);
     this.shake = Math.max(0, this.shake - dt * 2.5);
 
-    const sens = 0.0022 * input.sensitivity;
+    // aiming down the sights narrows the view; slow the mouse to match
+    const sens = 0.0022 * input.sensitivity * (game.camera.fov / 72);
+    this.punchV += (-this.punch * 95 - this.punchV * 13) * dt;
+    this.punch += this.punchV * dt;
     this.yaw -= input.mouseDX * sens;
     this.pitch -= input.mouseDY * sens;
     // how fast the view is turning, for weapon sway (rad/s)
@@ -183,7 +189,8 @@ export class Player {
       mz /= len;
     }
     this.moving = len > 0;
-    const wantRun = (input.down('ShiftLeft') || input.down('ShiftRight')) && this.moving && mz <= 0.2;
+    const ads = game.vmAnim?.ads ?? 0;
+    const wantRun = (input.down('ShiftLeft') || input.down('ShiftRight')) && this.moving && mz <= 0.2 && !input.aimDown;
     if (wantRun && this.crouch) this.crouch = false;
     this.running = wantRun && !this.exhausted && this.stamina > 0 && this.trapped <= 0;
 
@@ -209,6 +216,7 @@ export class Player {
     speed *= this.speedMul;
     const wdef = this.weaponDef();
     if (wdef.cat === 'lmg' || wdef.cat === 'launcher') speed *= 0.88;
+    speed *= 1 - 0.42 * ads;
     if (this.trapped > 0) {
       this.trapped -= dt;
       speed = 0;
@@ -385,6 +393,14 @@ export class Player {
     inst.mag--;
     this.fireCd = 1 / st.rate;
     this.recoil = def.cat === 'sniper' || def.cat === 'shotgun' || def.cat === 'launcher' ? 1.4 : def.cat === 'flame' ? 0.1 : def.auto ? 0.45 : 1;
+    // the muzzle climbs (you pull it back down) and the view punches
+    const ads = g.vmAnim?.ads ?? 0;
+    const rp = RECOIL[def.cat] || RECOIL.pistol;
+    const power = clamp(Math.sqrt((st.dmg * st.pellets) / (def.cat === 'shotgun' ? 110 : 40)), 0.6, def.auto ? 1.1 : 1.8);
+    this.pitch = clamp(this.pitch + rp.climb * power * (1 - 0.3 * ads), -1.45, 1.45);
+    this.yaw += (Math.random() - 0.5) * 2 * rp.side * power;
+    this.punchV += rp.punch * power * 22;
+    g.onWeaponFired?.(def, inst.mag <= 0);
     this.shake = Math.max(this.shake, def.cat === 'flame' ? 0.05 : Math.min(0.5, 0.12 + st.dmg * st.pellets * 0.0012));
     g.audio.weaponFire(def);
     g.muzzleFlash(def);
@@ -407,7 +423,9 @@ export class Player {
       });
     } else {
       for (let i = 0; i < st.pellets; i++) {
-        const dir = this.spreadDir(fwd, st.spread * (this.moving ? 1.35 : 1) * (this.crouch ? 0.75 : 1));
+        // aiming down the sights tightens the spread (shotguns less so)
+        const aimK = 1 - ads * (def.cat === 'shotgun' ? 0.3 : 0.7);
+        const dir = this.spreadDir(fwd, st.spread * (this.moving ? 1.35 : 1) * (this.crouch ? 0.75 : 1) * aimK);
         g.combat.hitscan(origin, dir, { dmg: st.dmg, range: st.range, pierce: st.pierce, src: this, tracer: i < 3 });
       }
     }
