@@ -130,6 +130,7 @@
   .beast { width: 220px; background: rgba(0,0,0,0.5); border: 1px solid var(--edge); padding: 6px 10px; text-align: left; }
   .beast h3 { margin: 0; font-family: var(--title); font-weight: normal; color: var(--blood); font-size: 22px; }
   .beast div { font-size: 18px; color: var(--bone-dim); line-height: 1.05; }
+  #bootNote { color: #ff9a5a; font-size: 18px; max-width: 640px; }
   #bestLine { color: var(--gold); font-size: 24px; min-height: 26px; }
   #title { background: radial-gradient(ellipse at 50% 40%, rgba(40,4,2,0.92), rgba(0,0,0,0.99) 70%); overflow-y: auto; justify-content: flex-start; padding: 4vh 0; }
   #title h1 { animation: flicker 6s infinite; margin-top: 2vh; }
@@ -458,6 +459,7 @@
   <h2>The last train out. How many nights can your camp hold?</h2>
   <div><button class="btn" id="continueBtn" style="display:none">CONTINUE</button><button class="btn" id="startBtn">NEW RUN</button><button class="btn" id="loadBtn" style="display:none">LOAD GAME</button></div>
   <div id="bestLine"></div>
+  <p id="bootNote">Loading… If NEW RUN does nothing, this page is being shown as a preview without running it (phones do this when you open a downloaded file). Open it in Chrome or Safari from a web address instead, or use the single file <b>dread-depths.html</b> in Chrome.</p>
   <p>Your camp is pitched beside a stalled train. By day, scavenge the buildings around you, recruit survivors, arm them, build up the barricade and mount turrets on the train cars. By night, the dead may come. When you have enough coal, move the train on. Save whenever you like; choose for each run whether death is final.</p>
   <div class="controls touchhelp">
     <b>Left thumb</b><span>Move (push to the edge to run)</span><b>Right thumb</b><span>Drag to look</span>
@@ -546,6 +548,18 @@
     x.putImageData(d, 0, 0);
     document.getElementById('grain').style.backgroundImage = 'url(' + c.toDataURL() + ')';
   })();
+</script>
+<script>
+  // show why the game didn't start, instead of a title screen that ignores taps
+  window.__bootFail = function (msg) {
+    var n = document.getElementById('bootNote');
+    if (n) { n.style.display = ''; n.textContent = 'The game could not start: ' + msg; }
+  };
+  window.addEventListener('error', function (e) {
+    if (window.__game) return;
+    if (e.target && e.target.tagName === 'SCRIPT') window.__bootFail('dist/game.js could not be loaded. Keep it next to index.html, or use dread-depths.html.');
+    else if (e.message) window.__bootFail(e.message);
+  }, true);
 </script>
 <script src="dist/game.js"></script>
 </body>

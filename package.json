@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --outfile=dist/game.js",
+    "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --outfile=dist/game.js && node tools/single.mjs",
     "dev": "esbuild src/main.js --bundle --format=iife --target=es2020 --sourcemap --outfile=dist/game.js --watch=forever --servedir=. --serve=8080"
   },
   "dependencies": {

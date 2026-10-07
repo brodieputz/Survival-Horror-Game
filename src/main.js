@@ -1451,5 +1451,12 @@ class Game {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  window.__game = new Game();
+  try {
+    window.__game = new Game();
+    document.getElementById('bootNote').style.display = 'none';
+  } catch (e) {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    window.__bootFail(gl ? String(e && e.message ? e.message : e) : 'this browser has no WebGL 2, which the 3D view needs. Update the browser (iOS 15+ / a recent Chrome).');
+    throw e;
+  }
 });

@@ -6,14 +6,16 @@ A first-person survival horror game built with [three.js](https://threejs.org), 
 
 The repo includes a prebuilt bundle (`dist/game.js`), so you can **open `index.html` in a browser**. No server is needed.
 
-**On a phone or tablet**, open the page from wherever it's hosted (for example GitHub Pages) and hold the device sideways. Android browsers switch to full screen when a run starts. On an iPhone, *Share → Add to Home Screen* gives the same full-screen view.
+**`dread-depths.html`** is the whole game in one file, so a downloaded copy can't lose its script. Open it in a browser (Chrome on Android).
+
+**On a phone or tablet**, the best way is to open the page from a web address (for example GitHub Pages) and hold the device sideways. Opening a downloaded file in a phone's file viewer usually shows a *preview* that doesn't run the game. The title screen then says so instead of ignoring taps. Android browsers switch to full screen when a run starts. On an iPhone, *Share → Add to Home Screen* gives the same full-screen view.
 
 To work on the code:
 
 ```bash
 npm install
 npm run dev     # rebuilds on change and serves at http://localhost:8080
-npm run build   # writes the minified bundle to dist/game.js
+npm run build   # writes the minified bundle to dist/game.js and the single-file dread-depths.html
 ```
 
 ## The camp
