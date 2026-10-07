@@ -314,7 +314,7 @@ export class BuildingScene {
     const out = env.out;
     const day = this.game.run.phase === 'day';
     const sky = out ? out.sky.clone().lerp(new THREE.Color(0xffffff), 0.3) : new THREE.Color(0xa8b4c0);
-    const glowC = day ? sky.multiplyScalar(0.95) : new THREE.Color(0x0a1220);
+    const glowC = day ? sky.multiplyScalar(0.55) : new THREE.Color(0x0a1220);
     const frameMat = M.lambert({ color: 0x3a3430, roughness: 0.7 });
     const blindMat = new THREE.MeshBasicMaterial({ map: tex('blinds', 109), color: glowC, toneMapped: true, fog: false });
     const blindMat2 = new THREE.MeshBasicMaterial({ map: tex('blinds', 110), color: glowC, fog: false });
@@ -354,7 +354,7 @@ export class BuildingScene {
         const len = 3.4;
         const drop = 1.4;
         const pos = [-hw, y - hh, 0.02, hw, y - hh, 0.02, hw, y + hh, 0.02, -hw, y + hh, 0.02, -hw - 0.3, y - hh - drop, len, hw + 0.3, y - hh - drop, len, hw + 0.3, y + hh - drop, len, -hw - 0.3, y + hh - drop, len];
-        const a0 = 0.11;
+        const a0 = 0.08;
         const col = [];
         for (let k = 0; k < 8; k++) col.push(glowC.r, glowC.g * 0.95, glowC.b * 0.85, k < 4 ? a0 : 0);
         geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
