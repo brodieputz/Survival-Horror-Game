@@ -468,6 +468,256 @@ const builders = {
     speckle(ctx, 32, 32, rng, 0.3);
     return toTex(c, { repeat: false });
   },
+  // ---------------------------------------------------------------- buildings
+  tile(seed = 20) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#5a5a56';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let y = 0; y < 4; y++)
+      for (let x = 0; x < 4; x++) {
+        const v = rng.int(150, 182);
+        ctx.fillStyle = shade([v, v, v - 6], 1);
+        ctx.fillRect(x * 16 + 1, y * 16 + 1, 15, 15);
+        ctx.fillStyle = shade([v, v, v - 6], 1.12);
+        ctx.fillRect(x * 16 + 1, y * 16 + 1, 15, 1);
+      }
+    speckle(ctx, 64, 64, rng, 0.25);
+    grime(ctx, 64, 64, rng, 16, '#3a3020');
+    grime(ctx, 64, 64, rng, 3, '#4a0606');
+    if (rng.chance(0.7)) drips(ctx, 64, 64, rng, rng.int(1, 3));
+    return toTex(c);
+  },
+  linoleum(seed = 21) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    for (let y = 0; y < 4; y++)
+      for (let x = 0; x < 4; x++) {
+        const dark = (x + y) % 2 === 0;
+        ctx.fillStyle = dark ? '#3c4038' : '#8a8a78';
+        ctx.fillRect(x * 16, y * 16, 16, 16);
+      }
+    speckle(ctx, 64, 64, rng, 0.3);
+    grime(ctx, 64, 64, rng, 24, '#14100a');
+    grime(ctx, 64, 64, rng, 3, '#3a0404');
+    return toTex(c);
+  },
+  wallpaper(seed = 22) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    const base = rng.pick([
+      [96, 82, 58],
+      [70, 84, 72],
+      [90, 70, 76],
+      [76, 76, 92],
+    ]);
+    ctx.fillStyle = shade(base, 1);
+    ctx.fillRect(0, 0, 64, 64);
+    for (let x = 0; x < 64; x += 8) {
+      ctx.fillStyle = shade(base, 0.8);
+      ctx.fillRect(x, 0, 2, 64);
+      for (let y = 4; y < 64; y += 12) {
+        ctx.fillStyle = shade(base, 1.2);
+        ctx.fillRect(x + 4, y, 2, 2);
+      }
+    }
+    // peeling patches and a dark skirting board
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = '#4a4238';
+      ctx.fillRect(rng.int(0, 56), rng.int(0, 50), rng.int(3, 9), rng.int(4, 12));
+    }
+    ctx.fillStyle = '#2a1a10';
+    ctx.fillRect(0, 58, 64, 6);
+    speckle(ctx, 64, 64, rng, 0.25);
+    grime(ctx, 64, 64, rng, 18, '#1a120a');
+    if (rng.chance(0.6)) drips(ctx, 64, 64, rng, rng.int(1, 2));
+    return toTex(c);
+  },
+  concrete(seed = 23) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#6a6862';
+    ctx.fillRect(0, 0, 64, 64);
+    speckle(ctx, 64, 64, rng, 0.45, 0.6);
+    grime(ctx, 64, 64, rng, 26, '#2a2824');
+    ctx.fillStyle = '#4a4844';
+    ctx.fillRect(0, 31, 64, 1);
+    ctx.fillRect(31, 0, 1, 64);
+    for (const [x, y] of [
+      [8, 8],
+      [56, 8],
+      [8, 56],
+      [56, 56],
+    ])
+      ctx.fillRect(x, y, 2, 2);
+    if (rng.chance(0.5)) drips(ctx, 64, 64, rng, 1);
+    return toTex(c);
+  },
+  carpet(seed = 24) {
+    const rng = new RNG(seed);
+    const c = canvas(32, 32);
+    const ctx = c.getContext('2d');
+    const base = rng.pick([
+      [70, 34, 34],
+      [40, 52, 70],
+      [66, 60, 44],
+    ]);
+    ctx.fillStyle = shade(base, 1);
+    ctx.fillRect(0, 0, 32, 32);
+    speckle(ctx, 32, 32, rng, 0.5, 0.5);
+    grime(ctx, 32, 32, rng, 10, '#120a06');
+    return toTex(c);
+  },
+  sheetMetal(seed = 25) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    for (let x = 0; x < 64; x += 4) {
+      ctx.fillStyle = x % 8 ? '#5a6062' : '#454a4c';
+      ctx.fillRect(x, 0, 4, 64);
+    }
+    speckle(ctx, 64, 64, rng, 0.3);
+    grime(ctx, 64, 64, rng, 18, '#5a2a0a');
+    grime(ctx, 64, 64, rng, 10, '#1a1a1a');
+    return toTex(c);
+  },
+  // ---------------------------------------------------------------- outdoors
+  asphalt(seed = 30) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#34363a';
+    ctx.fillRect(0, 0, 64, 64);
+    speckle(ctx, 64, 64, rng, 0.6, 0.5);
+    ctx.strokeStyle = '#1c1c1e';
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      let x = rng.range(0, 64);
+      let y = rng.range(0, 64);
+      ctx.moveTo(x, y);
+      for (let k = 0; k < 6; k++) ctx.lineTo((x += rng.range(-8, 8)), (y += rng.range(-8, 8)));
+      ctx.stroke();
+    }
+    return toTex(c);
+  },
+  grass(seed = 31) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#3a4a26';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 700; i++) {
+      const g = rng.int(50, 95);
+      ctx.fillStyle = `rgb(${g - 18},${g},${g - 40})`;
+      ctx.fillRect(rng.int(0, 63), rng.int(0, 63), 1, rng.int(1, 3));
+    }
+    grime(ctx, 64, 64, rng, 12, '#2a2414');
+    return toTex(c);
+  },
+  sand(seed = 32) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#b8945e';
+    ctx.fillRect(0, 0, 64, 64);
+    speckle(ctx, 64, 64, rng, 0.3, 0.8);
+    ctx.strokeStyle = 'rgba(120,90,50,0.5)';
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath();
+      const y = rng.range(0, 64);
+      ctx.moveTo(0, y);
+      ctx.quadraticCurveTo(32, y + rng.range(-6, 6), 64, y);
+      ctx.stroke();
+    }
+    return toTex(c);
+  },
+  snow(seed = 33) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#d4dce6';
+    ctx.fillRect(0, 0, 64, 64);
+    speckle(ctx, 64, 64, rng, 0.12, 0.85);
+    grime(ctx, 64, 64, rng, 14, '#9aa6b6');
+    return toTex(c);
+  },
+  dirt(seed = 34) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#4a3a2a';
+    ctx.fillRect(0, 0, 64, 64);
+    speckle(ctx, 64, 64, rng, 0.5, 0.6);
+    grime(ctx, 64, 64, rng, 20, '#2a1e12');
+    return toTex(c);
+  },
+  canvasCloth(seed = 35) {
+    const rng = new RNG(seed);
+    const c = canvas(32, 32);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#6a6448';
+    ctx.fillRect(0, 0, 32, 32);
+    for (let i = 0; i < 32; i += 2) {
+      ctx.fillStyle = 'rgba(0,0,0,0.08)';
+      ctx.fillRect(i, 0, 1, 32);
+      ctx.fillRect(0, i, 32, 1);
+    }
+    speckle(ctx, 32, 32, rng, 0.2);
+    grime(ctx, 32, 32, rng, 8, '#2a2418');
+    return toTex(c);
+  },
+  bark(seed = 36) {
+    const rng = new RNG(seed);
+    const c = canvas(32, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#3a2a1c';
+    ctx.fillRect(0, 0, 32, 64);
+    for (let i = 0; i < 14; i++) {
+      ctx.fillStyle = shade([40, 28, 18], rng.range(0.5, 1.3));
+      ctx.fillRect(rng.int(0, 30), 0, rng.int(1, 3), 64);
+    }
+    speckle(ctx, 32, 64, rng, 0.3);
+    return toTex(c);
+  },
+  trainMetal(seed = 37) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 32);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#4a2e22';
+    ctx.fillRect(0, 0, 64, 32);
+    for (let x = 0; x < 64; x += 16) {
+      ctx.fillStyle = '#2a1a12';
+      ctx.fillRect(x, 0, 1, 32);
+      ctx.fillStyle = '#8a8478';
+      for (let y = 3; y < 32; y += 6) ctx.fillRect(x + 2, y, 1, 1);
+    }
+    speckle(ctx, 64, 32, rng, 0.3);
+    grime(ctx, 64, 32, rng, 16, '#6a3a12');
+    grime(ctx, 64, 32, rng, 10, '#141010');
+    return toTex(c);
+  },
+  mapPaper(seed = 38) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 48);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#c8b48a';
+    ctx.fillRect(0, 0, 64, 48);
+    ctx.strokeStyle = '#6a5030';
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.moveTo(rng.range(0, 64), rng.range(0, 48));
+      ctx.lineTo(rng.range(0, 64), rng.range(0, 48));
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#8a2a1a';
+    for (let i = 0; i < 6; i++) ctx.fillRect(rng.int(4, 58), rng.int(4, 42), 3, 3);
+    speckle(ctx, 64, 48, rng, 0.2);
+    return toTex(c, { repeat: false });
+  },
 };
 
 export function tex(name, seed) {

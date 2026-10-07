@@ -53,69 +53,65 @@ function wallQuad(batch, tx, ty, fx, fz, y0, y1, vScale = 1 / TILE) {
 }
 
 export class World {
-  constructor(d) {
+  // d: { W, H, tiles, blocked, roomOf?, theme? }
+  // opts.render=false builds no geometry (the camp draws its own terrain).
+  // opts.outdoor=true means there is no ceiling anywhere.
+  constructor(d, opts = {}) {
     this.d = d;
     this.W = d.W;
     this.H = d.H;
     this.tiles = d.tiles;
+    this.outdoor = !!opts.outdoor;
     this.group = new THREE.Group();
     this.props = new Map(); // tile index -> array of AABB colliders
-    this.buildGeometry();
+    this.materials = {};
+    if (opts.render !== false) this.buildGeometry();
   }
 
   t(x, y) {
     if (x < 0 || y < 0 || x >= this.W || y >= this.H) return T.ROCK;
     return this.tiles[y * this.W + x];
   }
-  isSafeTile(x, y) {
-    const t = this.t(x, y);
-    return t === T.SAFE || t === T.DOOR;
-  }
-  isSafePos(x, z) {
-    return this.isSafeTile(Math.floor(x / TILE), Math.floor(z / TILE));
-  }
-  // Inside the safe room proper (doorway counts as outside for monsters' purposes).
-  inSafeRoom(x, z) {
-    return this.t(Math.floor(x / TILE), Math.floor(z / TILE)) === T.SAFE;
-  }
   tileOf(x, z) {
     return [Math.floor(x / TILE), Math.floor(z / TILE)];
   }
+  isOpenSky(x, z) {
+    if (this.outdoor) return true;
+    return this.t(Math.floor(x / TILE), Math.floor(z / TILE)) === T.YARD;
+  }
   walkableForMonster(x, y) {
     const t = this.t(x, y);
-    return t === T.FLOOR && !this.d.blocked[y * this.W + x];
+    return (t === T.FLOOR || t === T.YARD) && !this.d.blocked[y * this.W + x];
   }
 
   buildGeometry() {
     const d = this.d;
+    const theme = d.theme || {};
     const batches = {
       wall: new QuadBatch(),
       wall2: new QuadBatch(),
       floor: new QuadBatch(),
       ceil: new QuadBatch(),
-      safeWall: new QuadBatch(),
-      safeFloor: new QuadBatch(),
-      safeCeil: new QuadBatch(),
+      yard: new QuadBatch(),
+      facade: new QuadBatch(),
       pit: new QuadBatch(),
     };
     const isOpen = (x, y) => this.t(x, y) !== T.ROCK;
-    const win = d.window;
     for (let y = 0; y < this.H; y++)
       for (let x = 0; x < this.W; x++) {
         const t = this.t(x, y);
         if (t === T.ROCK) continue;
-        const safe = t === T.SAFE;
-        const room = d.roomOf[y * this.W + x];
+        const yard = t === T.YARD;
+        const room = d.roomOf ? d.roomOf[y * this.W + x] : -1;
         const x0 = x * TILE;
         const z0 = y * TILE;
         const x1 = x0 + TILE;
         const z1 = z0 + TILE;
         const fy = t === T.PIT ? -PIT_DEPTH : 0;
-        const fb = safe ? batches.safeFloor : t === T.PIT ? batches.pit : batches.floor;
+        const fb = yard ? batches.yard : t === T.PIT ? batches.pit : batches.floor;
         fb.quad([x0, fy, z0], [x0, fy, z1], [x1, fy, z1], [x1, fy, z0], [0, 1, 0]);
-        const cb = safe ? batches.safeCeil : batches.ceil;
-        cb.quad([x0, WALL_H, z0], [x1, WALL_H, z0], [x1, WALL_H, z1], [x0, WALL_H, z1], [0, -1, 0]);
-        const wb = safe ? batches.safeWall : room > 0 && room % 3 === 0 ? batches.wall2 : batches.wall;
+        if (!yard) batches.ceil.quad([x0, WALL_H, z0], [x1, WALL_H, z0], [x1, WALL_H, z1], [x0, WALL_H, z1], [0, -1, 0]);
+        const wb = yard ? batches.facade : room > 0 && room % 3 === 0 ? batches.wall2 : batches.wall;
         for (const [fx, fz] of [
           [1, 0],
           [-1, 0],
@@ -128,26 +124,22 @@ export class World {
             if (t === T.PIT && this.t(nx, ny) !== T.PIT) wallQuad(batches.pit, x, y, fx, fz, -PIT_DEPTH, 0);
             continue;
           }
-          if (win && nx === win.x && ny === win.y) this.windowWall(wb, x, y, fx, fz);
-          else wallQuad(wb, x, y, fx, fz, t === T.PIT ? -PIT_DEPTH : 0, WALL_H);
+          wallQuad(wb, x, y, fx, fz, t === T.PIT ? -PIT_DEPTH : 0, yard ? WALL_H + 1.2 : WALL_H);
         }
       }
-    if (win) this.windowTunnel(batches.wall);
 
-    const mk = (texture, color = 0xffffff, emissive = 0x000000) => {
+    const mk = (texture, color = 0xffffff) => {
       const t2 = texture.clone();
       t2.needsUpdate = true;
-      // the sanctuary glows with warm candle light of its own (no light bleeding through walls)
-      return new THREE.MeshLambertMaterial({ map: t2, color, emissive, emissiveMap: emissive ? t2 : null });
+      return new THREE.MeshLambertMaterial({ map: t2, color });
     };
     const mats = {
-      wall: mk(tex('brick', 1)),
-      wall2: mk(tex('stoneBlocks', 2)),
-      floor: mk(tex('floor', 3)),
-      ceil: mk(tex('ceiling', 4)),
-      safeWall: mk(tex('wood', 5), 0xd0b090, 0x7a4a24),
-      safeFloor: mk(tex('woodFloor', 6), 0xc0a080, 0x6a3c1a),
-      safeCeil: mk(tex('wood', 5), 0x806050, 0x3a2412),
+      wall: mk(tex(theme.wall || 'brick', 1)),
+      wall2: mk(tex(theme.wall2 || 'stoneBlocks', 2)),
+      floor: mk(tex(theme.floor || 'floor', 3)),
+      ceil: mk(tex(theme.ceil || 'ceiling', 4)),
+      yard: mk(tex(theme.yard || 'asphalt', 30)),
+      facade: mk(tex('brick', 7), 0xb8a898),
       pit: mk(tex('stoneBlocks', 2), 0x664444),
     };
     this.materials = mats;
@@ -158,65 +150,6 @@ export class World {
       mesh.matrixAutoUpdate = false;
       mesh.updateMatrix();
       this.group.add(mesh);
-    }
-  }
-
-  // Wall face with a small rectangular hole (the safe-room peep window).
-  windowWall(batch, tx, ty, fx, fz) {
-    const cx = (tx + 0.5) * TILE + (fx * TILE) / 2;
-    const cz = (ty + 0.5) * TILE + (fz * TILE) / 2;
-    const rx = -fz;
-    const rz = fx;
-    const h = TILE / 2;
-    const hw = 0.45; // hole half-width
-    const y0 = 1.3;
-    const y1 = 1.85;
-    const P = (s, y) => [cx + rx * s, y, cz + rz * s];
-    const n = [-fx, 0, -fz];
-    const V = 1 / TILE;
-    const U = (s) => (s + h) / TILE;
-    const part = (s0, s1, ya, yb) => batch.quad(P(s0, ya), P(s1, ya), P(s1, yb), P(s0, yb), n, U(s0), ya * V, U(s1), yb * V);
-    part(-h, -hw, 0, WALL_H);
-    part(hw, h, 0, WALL_H);
-    part(-hw, hw, 0, y0);
-    part(-hw, hw, y1, WALL_H);
-    this.windowInfo = { y0, y1, hw };
-  }
-
-  windowTunnel(batch) {
-    const w = this.d.window;
-    const { y0, y1, hw } = this.windowInfo || { y0: 1.3, y1: 1.85, hw: 0.45 };
-    const cx = (w.x + 0.5) * TILE;
-    const cz = (w.y + 0.5) * TILE;
-    const ax = w.dir[0]; // tunnel axis
-    const az = w.dir[1];
-    const rx = -az;
-    const rz = ax;
-    const h = TILE / 2;
-    const P = (s, y, a) => [cx + rx * s + ax * a, y, cz + rz * s + az * a];
-    // floor of tunnel (facing up), ceiling (facing down), sides
-    batch.quad(P(-hw, y0, -h), P(-hw, y0, h), P(hw, y0, h), P(hw, y0, -h), [0, 1, 0]);
-    batch.quad(P(-hw, y1, -h), P(hw, y1, -h), P(hw, y1, h), P(-hw, y1, h), [0, -1, 0]);
-    const q = (s, sign) => {
-      const n = [rx * sign, 0, rz * sign];
-      const a = P(s, y0, -h);
-      const b = P(s, y0, h);
-      const c = P(s, y1, h);
-      const d2 = P(s, y1, -h);
-      // ensure CCW for the facing direction
-      if (sign > 0) batch.quad(a, d2, c, b, n);
-      else batch.quad(a, b, c, d2, n);
-    };
-    q(-hw, 1);
-    q(hw, -1);
-    // bars on the inside
-    const barMat = new THREE.MeshLambertMaterial({ color: 0x2a2a2a });
-    const inner = [-w.dir[0], -w.dir[1]];
-    for (let i = -2; i <= 2; i++) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.04, y1 - y0, 0.04), barMat);
-      const s = (i / 2.5) * hw;
-      bar.position.set(cx + rx * s + inner[0] * (h - 0.1), (y0 + y1) / 2, cz + rz * s + inner[1] * (h - 0.1));
-      this.group.add(bar);
     }
   }
 
@@ -252,7 +185,7 @@ export class World {
         for (let x = tx - 1; x <= tx + 1; x++) {
           const t = this.t(x, y);
           let solid = t === T.ROCK;
-          if (monster && (t === T.SAFE || t === T.DOOR || t === T.PIT)) solid = true;
+          if (monster && t === T.PIT) solid = true;
           if (solid) this.pushOut(pos, r, x * TILE, y * TILE, (x + 1) * TILE, (y + 1) * TILE);
           const list = this.props.get(y * this.W + x);
           if (list) for (const b of list) this.pushOut(pos, r, b.minX, b.minZ, b.maxX, b.maxZ);
@@ -332,7 +265,10 @@ export class World {
       d = Math.min(d, hd / flat);
     }
     if (dir.y < -1e-5) d = Math.min(d, -origin.y / dir.y);
-    if (dir.y > 1e-5) d = Math.min(d, (WALL_H - origin.y) / dir.y);
+    if (dir.y > 1e-5) {
+      const tc = (WALL_H - origin.y) / dir.y;
+      if (tc < d && !this.isOpenSky(origin.x + dir.x * tc, origin.z + dir.z * tc)) d = tc;
+    }
     return Math.max(0, d);
   }
 
@@ -365,7 +301,7 @@ export class World {
     const goal = gty * W + gtx;
     const start = sty * W + stx;
     const goalOk = (x, y) => this.walkableForMonster(x, y) || y * W + x === goal;
-    if (this.t(gtx, gty) === T.ROCK || this.isSafeTile(gtx, gty)) return null;
+    if (this.t(gtx, gty) === T.ROCK) return null;
     const g = new Map();
     const came = new Map();
     const closed = new Set();
@@ -431,7 +367,7 @@ export class World {
         if (!this.walkableForMonster(tx, ty)) {
           // the destination tile may be a blocked prop tile (hiding spot approach)
           const [gx, gy] = this.tileOf(bx, bz);
-          if (!(tx === gx && ty === gy && this.t(tx, ty) === T.FLOOR)) return false;
+          if (!(tx === gx && ty === gy && this.t(tx, ty) !== T.ROCK)) return false;
         }
       }
     }
@@ -446,5 +382,6 @@ export class World {
       this.materials[k].map?.dispose();
       this.materials[k].dispose();
     }
+    this.props.clear();
   }
 }

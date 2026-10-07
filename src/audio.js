@@ -542,6 +542,164 @@ export class AudioSys {
     this.noise(t + 0.6, 0.3, o, { type: 'lowpass', freq: 400, gain: 0.6 });
   }
 
+
+  // ------------------------------------------------------------ weapons & camp
+  // Gunfire for any weapon. pos = null for the player's own weapon.
+  weaponFire(def, pos = null) {
+    if (!this.ok()) return;
+    const t = this.now;
+    const k = def.sound;
+    if (pos) {
+      this.lastNpcShot = this.lastNpcShot || 0;
+      if (t - this.lastNpcShot < 0.03) return;
+      this.lastNpcShot = t;
+    }
+    const o = this.out(pos, pos ? 0.75 : 1.0, { reverb: pos ? 0.35 : 0.6, max: 140 });
+    switch (k) {
+      case 'magnum':
+        this.noise(t, 0.5, o, { type: 'lowpass', freq: 5200, f1: 220, gain: 1.1, attack: 0.001 });
+        this.osc('sine', 120, t, 0.3, o, { gain: 1.0, f1: 35, attack: 0.001 });
+        this.osc('square', 70, t, 0.07, o, { gain: 0.4, f1: 35, attack: 0.001 });
+        break;
+      case 'smg':
+        this.noise(t, 0.16, o, { type: 'lowpass', freq: 6000, f1: 600, gain: 0.6, attack: 0.001 });
+        this.osc('sine', 220, t, 0.09, o, { gain: 0.45, f1: 60, attack: 0.001 });
+        break;
+      case 'rifle':
+      case 'lmg':
+        this.noise(t, k === 'lmg' ? 0.22 : 0.34, o, { type: 'lowpass', freq: 7000, f1: 300, gain: 0.85, attack: 0.001 });
+        this.noise(t, 0.04, o, { type: 'highpass', freq: 3000, gain: 0.5, attack: 0.001 });
+        this.osc('sine', 140, t, 0.18, o, { gain: 0.7, f1: 40, attack: 0.001 });
+        break;
+      case 'sniper':
+        this.noise(t, 0.9, o, { type: 'lowpass', freq: 8000, f1: 150, gain: 1.2, attack: 0.001 });
+        this.noise(t, 0.05, o, { type: 'highpass', freq: 2500, gain: 0.8, attack: 0.001 });
+        this.osc('sine', 90, t, 0.5, o, { gain: 1.0, f1: 28, attack: 0.001 });
+        break;
+      case 'shotgun':
+        this.noise(t, 0.6, o, { type: 'lowpass', freq: 3200, f1: 150, gain: 1.25, attack: 0.001 });
+        this.osc('sine', 100, t, 0.35, o, { gain: 1.1, f1: 30, attack: 0.001 });
+        break;
+      case 'rocket':
+        this.noise(t, 1.0, o, { freq: 900, f1: 220, Q: 0.7, gain: 0.9, attack: 0.02 });
+        this.osc('sine', 60, t, 0.4, o, { gain: 0.8, f1: 30, attack: 0.005 });
+        break;
+      case 'launcher':
+        this.osc('sine', 130, t, 0.16, o, { gain: 1.0, f1: 50, attack: 0.002 });
+        this.noise(t, 0.12, o, { type: 'lowpass', freq: 1200, gain: 0.6, attack: 0.002 });
+        break;
+      case 'bow':
+        this.osc('triangle', 230, t, 0.25, o, { gain: 0.25, f1: 170, attack: 0.002 });
+        this.noise(t, 0.08, o, { type: 'highpass', freq: 2500, gain: 0.25 });
+        break;
+      case 'throw':
+        this.noise(t, 0.28, o, { freq: 1000, f1: 400, Q: 1, gain: 0.3, attack: 0.08 });
+        break;
+      case 'flame':
+        this.noise(t, 0.14, o, { freq: 500, Q: 0.5, gain: 0.35, attack: 0.02 });
+        this.noise(t, 0.12, o, { type: 'highpass', freq: 3000, gain: 0.06 });
+        break;
+      case 'chainsaw':
+        this.osc('sawtooth', 95 + Math.random() * 15, t, 0.1, o, { gain: 0.16, attack: 0.005 });
+        this.noise(t, 0.09, o, { freq: 1600, Q: 1.5, gain: 0.12 });
+        break;
+      case 'melee':
+        this.noise(t, 0.2, o, { freq: 1300, f1: 450, Q: 1.2, gain: 0.32, attack: 0.05 });
+        break;
+      case 'pistol':
+      default:
+        this.noise(t, 0.32, o, { type: 'lowpass', freq: 4600, f1: 280, gain: 0.85, attack: 0.001 });
+        this.osc('sine', 170, t, 0.2, o, { gain: 0.75, f1: 42, attack: 0.001 });
+        break;
+    }
+  }
+  swing(pos = null) {
+    if (!this.ok()) return;
+    const o = this.out(pos, 0.6, { reverb: 0.05 });
+    this.noise(this.now, 0.2, o, { freq: 1300, f1: 450, Q: 1.2, gain: 0.32, attack: 0.05 });
+  }
+  meleeHit(pos) {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(pos, 0.9, { reverb: 0.1 });
+    this.osc('sine', 110, t, 0.12, o, { gain: 0.7, f1: 45 });
+    this.noise(t, 0.1, o, { type: 'lowpass', freq: 1400, gain: 0.6 });
+  }
+  explosion(pos, radius = 5) {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(pos, 1.4, { reverb: 0.8, max: 260 });
+    this.noise(t, 1.6, o, { type: 'lowpass', freq: 2600, f1: 70, gain: 1.4, attack: 0.002 });
+    this.osc('sine', 70, t, 1.3, o, { gain: 1.3, f1: 22, attack: 0.002 });
+    this.noise(t + 0.05, 2.2, o, { type: 'lowpass', freq: 300, f1: 60, gain: 0.7 * Math.min(1.5, radius / 5), attack: 0.1 });
+  }
+  turretFire(type, pos) {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(pos, 0.7, { reverb: 0.3, max: 160 });
+    if (type === 'mg') {
+      this.noise(t, 0.12, o, { type: 'lowpass', freq: 6000, f1: 500, gain: 0.55, attack: 0.001 });
+      this.osc('sine', 160, t, 0.08, o, { gain: 0.4, f1: 60, attack: 0.001 });
+    } else if (type === 'missile') {
+      this.noise(t, 0.8, o, { freq: 1100, f1: 300, Q: 0.8, gain: 0.7, attack: 0.03 });
+    } else {
+      this.noise(t, 1.2, o, { type: 'lowpass', freq: 2000, f1: 90, gain: 1.3, attack: 0.002 });
+      this.osc('sine', 55, t, 0.9, o, { gain: 1.2, f1: 25, attack: 0.002 });
+    }
+  }
+  barricadeHit(pos, heavy) {
+    if (!this.ok()) return;
+    const t = this.now;
+    if (t - (this.lastBar || 0) < 0.08) return;
+    this.lastBar = t;
+    const o = this.out(pos, heavy ? 1 : 0.6, { reverb: 0.2, max: 90 });
+    this.osc('sine', heavy ? 80 : 120, t, 0.15, o, { gain: 0.7, f1: 50 });
+    this.noise(t, 0.12, o, { freq: 700, Q: 1.5, gain: 0.5 });
+    if (Math.random() < 0.3) this.noise(t + 0.05, 0.15, o, { type: 'highpass', freq: 2500, gain: 0.25 });
+  }
+  barricadeBreak() {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(null, 1.1, { reverb: 0.6 });
+    for (let i = 0; i < 7; i++) this.noise(t + i * 0.09, 0.25, o, { freq: 500 + Math.random() * 2000, Q: 1.2, gain: 0.6 });
+    this.osc('sine', 60, t, 1.2, o, { gain: 1.0, f1: 25 });
+  }
+  hammer() {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(null, 0.7, { reverb: 0.2 });
+    for (let i = 0; i < 3; i++) {
+      this.osc('sine', 900, t + i * 0.22, 0.12, o, { gain: 0.2, f1: 600 });
+      this.noise(t + i * 0.22, 0.06, o, { freq: 1800, Q: 2, gain: 0.5 });
+    }
+  }
+  impactNpc(pos) {
+    if (!this.ok()) return;
+    const o = this.out(pos, 0.6, { reverb: 0.1 });
+    this.noise(this.now, 0.1, o, { type: 'lowpass', freq: 800, gain: 0.6 });
+    this.osc('sine', 200, this.now, 0.15, o, { gain: 0.25, f1: 120 });
+  }
+  horn() {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(null, 0.8, { reverb: 0.9 });
+    [36, 43, 48].forEach((n) => this.osc('sawtooth', midi(n), t, 3.2, o, { gain: 0.12, attack: 0.8 }));
+    this.osc('sine', 40, t, 3, o, { gain: 0.5, f1: 30, attack: 0.5 });
+  }
+  dawn() {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(null, 0.6, { reverb: 0.8 });
+    [72, 76, 79, 84].forEach((n, i) => this.osc('triangle', midi(n), t + i * 0.18, 1.6, o, { gain: 0.12 }));
+  }
+  whistle() {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(null, 0.7, { reverb: 0.9 });
+    [523, 659, 784].forEach((f) => this.osc('sine', f, t, 1.8, o, { gain: 0.12, attack: 0.1 }));
+    this.noise(t, 1.8, o, { freq: 2000, Q: 2, gain: 0.08, attack: 0.1 });
+  }
+
   // ------------------------------------------------------------ music
   setMode(mode, instant = false) {
     this.mode = mode;

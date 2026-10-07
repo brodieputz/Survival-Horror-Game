@@ -1,26 +1,55 @@
-// DOM HUD, minimap, full map, shop and menu screens.
-import { SHOP_ITEMS, itemPrice, TILE, GUN } from './config.js';
+// DOM HUD, minimaps and the camp management panels (armory, survivors,
+// barricade, turrets, local & regional maps, reports).
+import { TILE, TRAPS, TRAP_ORDER, TURRETS, TURRET_ORDER, BARRICADE, TRAVEL_HOURS } from './config.js';
+import { WEAPONS, RARITY, RARITY_ORDER, AMMO, AMMO_ORDER, CATEGORY, UPGRADES, UPG_MAX, upgradeKeys, upgradeCost, weaponStats } from './weapons.js';
+import {
+  BIOMES,
+  LOCATION_TYPES,
+  xpToNext,
+  survivorMaxHp,
+  survivorSpeed,
+  survivorStamina,
+  survivorAim,
+  barricadeMax,
+  weaponByUid,
+  holderOf,
+  expeditionChance,
+  waveChance,
+} from './run.js';
 
 const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 const DEATH_TEXT = {
+  walker: 'Dragged down by the shambling dead.',
+  runner: 'Run down by a sprinting corpse.',
   grunt: 'Torn apart by a Grunt.',
+  fat: 'Crushed under a Bloater.',
+  rotter: 'Rotted hands found your throat.',
+  armored: 'Beaten down by a Riot Zombie.',
+  crawler: 'Something crawled out of the dark and bit.',
   hound: 'Mauled by a Blood Hound.',
   brute: 'Crushed by the Blind Brute.',
   angel: 'You looked away. The Angel did not.',
   spikes: 'Impaled on rusted spikes.',
   beartrap: 'Bled out in the jaws of a trap.',
+  explosion: 'Caught in your own blast.',
+  fire: 'Burned alive.',
 };
+
+const skulls = (n) => '☠'.repeat(n);
+const bar = (v, max) => `<div class="sbar"><i style="width:${Math.max(0, Math.min(100, (v / max) * 100)).toFixed(0)}%"></i></div>`;
+const rname = (def) => `<span style="color:${RARITY[def.rarity].color}">${esc(def.name)}</span>`;
 
 export class UI {
   constructor(game) {
     this.game = game;
     this.el = {};
     for (const id of [
-      'hud', 'lvl', 'dia', 'gold', 'lives', 'hpFill', 'hpText', 'stFill', 'inv', 'ammo', 'ammoSub', 'prompt', 'msgs',
-      'banner', 'bannerT', 'bannerS', 'hurt', 'hideMask', 'fade', 'title', 'pause', 'shop', 'shopItems', 'shopGold',
-      'mapScreen', 'bigmap', 'death', 'deathCause', 'deathSub', 'gameover', 'goStats', 'minimap', 'status', 'bestLine',
-      'cross', 'vignette', 'mapLegend', 'shopLevel',
+      'hud', 'dayLine', 'phaseLine', 'locLine', 'res', 'barBox', 'barFill', 'barText', 'waveText', 'squad', 'miniHint', 'lvlText', 'xpText',
+      'xpFill', 'hpFill', 'hpText', 'stFill', 'status', 'trapHud', 'inv', 'wname', 'ammo', 'ammoSub', 'cross', 'prompt', 'msgs', 'banner',
+      'bannerT', 'bannerS', 'hurt', 'hideMask', 'fade', 'title', 'pause', 'panel', 'panelTitle', 'panelSub', 'panelBody', 'mapScreen',
+      'bigmap', 'death', 'deathCause', 'deathSub', 'gameover', 'goStats', 'minimap', 'bestLine', 'vignette', 'mapLegend', 'continueBtn',
     ])
       this.el[id] = $(id);
     this.mini = this.el.minimap.getContext('2d');
@@ -33,8 +62,13 @@ export class UI {
     this.fadeTarget = 0;
     this.fadeSpeed = 1;
     this.mapOpen = false;
-    this.buildShop();
+    this.panel = null;
     this.bindSettings();
+    this.el.panelBody.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b || b.disabled) return;
+      this.game.panelAction(b.dataset.act, b.dataset);
+    });
   }
 
   set(key, el, value, prop = 'textContent') {
@@ -74,9 +108,8 @@ export class UI {
   update(dt) {
     const g = this.game;
     const p = g.player;
+    const run = g.run;
     const lvl = g.level;
-    if (!p || !lvl) return;
-
     for (const m of this.messages) {
       m.t -= dt;
       if (m.t < 0.6) m.div.style.opacity = Math.max(0, m.t / 0.6);
@@ -87,46 +120,119 @@ export class UI {
       this.bannerT -= dt;
       if (this.bannerT <= 0) this.el.banner.classList.remove('show');
     }
-    this.hurtV = Math.max(0, this.hurtV - dt * 1.2);
-    const lowHp = p.alive && p.health / p.maxHealth < 0.3 ? 0.25 + Math.sin(g.time * 5) * 0.08 : 0;
-    this.el.hurt.style.opacity = Math.max(this.hurtV, lowHp).toFixed(3);
     if (this.fadeV !== this.fadeTarget) {
       const s = this.fadeSpeed * dt;
       this.fadeV = this.fadeV < this.fadeTarget ? Math.min(this.fadeTarget, this.fadeV + s) : Math.max(this.fadeTarget, this.fadeV - s);
       this.el.fade.style.opacity = this.fadeV.toFixed(3);
     }
+    if (!p || !lvl || !run) return;
+    this.hurtV = Math.max(0, this.hurtV - dt * 1.2);
+    const lowHp = p.alive && p.health / p.maxHealth < 0.3 ? 0.25 + Math.sin(g.time * 5) * 0.08 : 0;
+    this.el.hurt.style.opacity = Math.max(this.hurtV, lowHp).toFixed(3);
 
-    this.set('lvl', this.el.lvl, `LEVEL <span class="num">${g.levelNum}</span>`, 'innerHTML');
-    this.set('dia', this.el.dia, `${lvl.found} / ${lvl.needed}`);
-    this.set('gold', this.el.gold, String(p.gold));
-    this.set('lives', this.el.lives, '☠'.repeat(Math.max(0, Math.min(p.lives, 12))) + (p.lives > 12 ? ` ×${p.lives}` : ''));
+    // top-left: day, phase, place, resources
+    this.set('day', this.el.dayLine, `DAY ${run.day}`);
+    let phase = '';
+    let pc = '';
+    if (lvl.kind === 'building') {
+      phase = `Searching ${lvl.loc.name}`;
+      pc = '';
+    } else if (run.phase === 'night') {
+      pc = 'night';
+      phase = lvl.wave?.active ? `NIGHT ${run.day} · WAVE ${lvl.wave.wave}` : `NIGHT ${run.day}`;
+    } else if (run.phase === 'dusk') {
+      pc = 'dusk';
+      phase = 'Dusk — sleep in your tent when ready';
+    } else phase = `${run.hours} ${run.hours === 1 ? 'hour' : 'hours'} of daylight left`;
+    this.set('phase', this.el.phaseLine, phase);
+    this.set('phasec', this.el.phaseLine, pc, 'className');
+    const b = BIOMES[run.locality.biome];
+    this.set('loc', this.el.locLine, `${run.locality.name} · ${b.name} · wave chance ${Math.round(waveChance(run) * 100)}%`);
+    const bp = run.blueprints.mg + run.blueprints.missile + run.blueprints.artillery;
+    this.set(
+      'res',
+      this.el.res,
+      `<span class="r-scrap">⚙ <b>${run.scrap}</b></span><span class="r-coal">◼ <b>${run.coal}</b> coal</span><span class="r-med">✚ <b>${run.medkits}</b></span>` +
+        (bp ? `<span class="muted">✎ ${bp}</span>` : ''),
+      'innerHTML'
+    );
+
+    // barricade + wave box
+    const camp = lvl.kind === 'camp';
+    this.set('barShow', this.el.barBox, camp ? 'show' : '', 'className');
+    if (camp) {
+      const max = barricadeMax(run);
+      const hp = run.barricade.hp;
+      this.set('barw', this.el.barFill.style, ((hp / max) * 100).toFixed(1) + '%', 'width');
+      this.set('barc', this.el.barFill, hp < max * 0.3 ? 'fill low' : 'fill', 'className');
+      this.set('bart', this.el.barText, hp > 0 ? `${Math.ceil(hp)} / ${max}` : 'BREACHED');
+      this.set('wave', this.el.waveText, lvl.wave?.active ? `${lvl.remaining} zombies remaining` : '');
+    }
+
+    // squad
+    let sq = '';
+    const list = lvl.kind === 'building' ? lvl.actors.map((a) => a.rec) : run.survivors.filter((s) => s.status !== 'dead');
+    for (const s of list) {
+      const away = s.status === 'away';
+      const hpF = Math.max(0, s.hp / survivorMaxHp(s));
+      sq += `<div class="sq ${away ? 'away' : ''}"><span>${esc(s.name.split(' ')[0])} <small>L${s.level}</small>${away ? ' (out)' : ''}</span><div class="hb"><i style="width:${(hpF * 100).toFixed(0)}%"></i></div></div>`;
+    }
+    this.set('squad', this.el.squad, sq, 'innerHTML');
+    this.set('miniHint', this.el.miniHint, lvl.kind === 'building' ? '[M] map' : '');
+
+    // bottom-left: level, health, stamina
+    this.set('lvlT', this.el.lvlText, `LEVEL ${run.player.level}`);
+    this.set('xpT', this.el.xpText, `${run.player.xp} / ${xpToNext(run.player.level)} xp`);
+    this.set('xpw', this.el.xpFill.style, ((run.player.xp / xpToNext(run.player.level)) * 100).toFixed(1) + '%', 'width');
     const hp = Math.max(0, p.health / p.maxHealth);
     this.set('hpw', this.el.hpFill.style, (hp * 100).toFixed(1) + '%', 'width');
     this.set('hpt', this.el.hpText, `${Math.ceil(p.health)} / ${p.maxHealth}`);
     const st = p.stamina / p.maxStamina;
     this.set('stw', this.el.stFill.style, (st * 100).toFixed(1) + '%', 'width');
     this.set('stc', this.el.stFill, p.exhausted ? 'fill exhausted' : 'fill', 'className');
-    this.set(
-      'inv',
-      this.el.inv,
-      `<div class="slot ${p.inv.medkit ? '' : 'empty'}"><b>H</b><span class="ico">✚</span>${p.inv.medkit}<small>Med kit</small></div>` +
-        `<div class="slot ${p.inv.beartrap ? '' : 'empty'}"><b>T</b><span class="ico">⊗</span>${p.inv.beartrap}<small>Bear trap</small></div>` +
-        `<div class="slot ${p.inv.key ? '' : 'empty'}"><b>&nbsp;</b><span class="ico">⚷</span>${p.inv.key}<small>Skel. key</small></div>` +
-        `<div class="slot ${lvl.mapOwned ? '' : 'empty'}"><b>M</b><span class="ico">▦</span>${lvl.mapOwned ? '✓' : '–'}<small>Map</small></div>`,
-      'innerHTML'
-    );
-    this.set('ammo', this.el.ammo, p.reloading > 0 ? 'RELOADING' : `${p.clip} / ${GUN.clip}`);
-    this.set('ammoSub', this.el.ammoSub, `${p.reserve} spare`);
     const status = [];
     if (p.hidden) status.push('HIDDEN');
     else if (p.crouch) status.push('CROUCHED');
     if (!p.flashlight) status.push('LIGHT OFF');
     if (p.trapped > 0) status.push('TRAPPED');
-    if (p.inSafe) status.push('SANCTUARY');
     this.set('status', this.el.status, status.join(' · '));
+
+    // inventory slots
+    const slot = (key, uid, idx) => {
+      const w = uid != null ? weaponByUid(run, uid) : null;
+      const def = w ? WEAPONS[w.id] : null;
+      const on = p.slot === idx ? 'style="border-color:var(--gold)"' : '';
+      if (!def) return `<div class="slot empty" ${on}><b>${key}</b><span class="ico">✊</span>–<small>Fists</small></div>`;
+      const short = def.name.length > 9 ? def.name.slice(0, 9) + '…' : def.name;
+      const ammo = def.cat === 'melee' ? '∞' : `${w.mag}`;
+      return `<div class="slot" ${on}><b>${key}</b><span class="ico" style="color:${RARITY[def.rarity].color}">${def.cat === 'melee' ? '⚔' : '⁍'}</span>${ammo}<small>${esc(short)}</small></div>`;
+    };
+    const traps = TRAP_ORDER.reduce((n, t) => n + run.traps[t], 0);
+    this.set(
+      'inv',
+      this.el.inv,
+      slot('1', run.loadout.primary, 0) +
+        slot('2', run.loadout.secondary, 1) +
+        `<div class="slot ${run.medkits ? '' : 'empty'}"><b>H</b><span class="ico">✚</span>${run.medkits}<small>Med kit</small></div>` +
+        `<div class="slot ${traps ? '' : 'empty'}"><b>T</b><span class="ico">⊗</span>${traps}<small>Traps</small></div>`,
+      'innerHTML'
+    );
+
+    // weapon readout
+    const def = p.weaponDef();
+    const inst = p.weapon();
+    this.set('wname', this.el.wname, `<span style="color:${RARITY[def.rarity]?.color || 'var(--bone-dim)'}">${esc(def.name.toUpperCase())}</span>`, 'innerHTML');
+    if (def.cat === 'melee') {
+      this.set('ammo', this.el.ammo, '—');
+      this.set('ammoSub', this.el.ammoSub, 'melee');
+    } else {
+      const stt = p.weaponStats();
+      this.set('ammo', this.el.ammo, p.reloading > 0 ? 'RELOADING' : `${inst.mag} / ${stt.mag}`);
+      this.set('ammoSub', this.el.ammoSub, `${run.ammo[def.ammo] || 0} ${AMMO[def.ammo].short.toLowerCase()} spare`);
+    }
     this.set('hideMask', this.el.hideMask, 'overlay mask' + (p.hidden ? ' ' + p.hidden.kind : ''), 'className');
     this.set('cross', this.el.cross.style, p.hidden || !p.alive ? 'none' : 'block', 'display');
-
+    this.updateTrapHud();
     this.drawMinimap();
     if (this.mapOpen) this.drawBigMap();
   }
@@ -136,45 +242,69 @@ export class UI {
     this.set('promptVis', this.el.prompt.style, text ? '1' : '0', 'opacity');
   }
 
-  // ------------------------------------------------------------ maps
-  drawMarkers(ctx, ox, oz, scale, big) {
+  updateTrapHud() {
+    const g = this.game;
+    const pl = g.placing;
+    this.set('trapShow', this.el.trapHud, pl ? 'show' : '', 'className');
+    if (!pl) return;
+    const run = g.run;
+    const items = TRAP_ORDER.map((t, i) => `<span class="t ${pl.type === t ? 'on' : ''} ${run.traps[t] ? '' : 'none'}">${i + 1} ${TRAPS[t].icon} ${TRAPS[t].name} ×${run.traps[t]}</span>`).join('');
+    const msg = pl.error ? `<span class="bad">${esc(pl.error)}</span>` : `<span class="muted">${esc(TRAPS[pl.type].desc)}</span>`;
+    this.set('trapHud', this.el.trapHud, `<div class="tsel">${items}</div>${msg}<div class="muted">Click: place · 1-4 / wheel: choose · T or Esc: done</div>`, 'innerHTML');
+  }
+
+  // ------------------------------------------------------------ minimaps
+  drawMinimap() {
     const g = this.game;
     const lvl = g.level;
+    const ctx = this.mini;
+    const size = this.el.minimap.width;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, size, size);
+    if (lvl.kind === 'camp') return this.drawCampMap(ctx, size);
     const p = g.player;
-    const toX = (x) => (x / TILE - ox) * scale;
-    const toY = (z) => (z / TILE - oz) * scale;
-    // hatch
-    const hs = Math.max(3, scale * 0.6);
-    ctx.fillStyle = lvl.unlocked ? '#ff5a3a' : '#6a4a3a';
-    ctx.fillRect(toX(lvl.hatch.x) - hs / 2, toY(lvl.hatch.z) - hs / 2, hs, hs);
-    // diamonds
-    for (const d of lvl.diamonds) {
-      if (d.taken || !d.known) continue;
-      const x = toX(d.x);
-      const y = toY(d.z);
-      const r = Math.max(3.5, scale * 0.55);
-      ctx.fillStyle = '#5fd8ff';
-      ctx.beginPath();
-      ctx.moveTo(x, y - r);
-      ctx.lineTo(x + r * 0.7, y);
-      ctx.lineTo(x, y + r);
-      ctx.lineTo(x - r * 0.7, y);
-      ctx.closePath();
-      ctx.fill();
-      if (big) {
-        ctx.strokeStyle = 'rgba(95,216,255,' + (0.4 + Math.sin(g.time * 4) * 0.3) + ')';
-        ctx.beginPath();
-        ctx.arc(x, y, r * 2, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
-    // player arrow
-    const px = toX(p.pos.x);
-    const py = toY(p.pos.z);
-    const a = p.yaw;
+    const view = 26;
+    const scale = size / view;
+    const ox = p.pos.x / TILE - view / 2;
+    const oz = p.pos.z / TILE - view / 2;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(lvl.mapCanvas, -ox * scale, -oz * scale, lvl.d.W * scale, lvl.d.H * scale);
+    this.drawMarkers(ctx, ox, oz, scale);
+  }
+
+  drawCampMap(ctx, size) {
+    const g = this.game;
+    const lvl = g.level;
+    const W = 160;
+    const s = size / W;
+    const oy = (size - 51 * s) / 2;
+    const X = (x) => x * s;
+    const Y = (z) => oy + z * s;
+    ctx.fillStyle = '#1a1a14';
+    ctx.fillRect(0, oy, size, 51 * s);
+    ctx.fillStyle = '#2a2418';
+    ctx.fillRect(X(12), oy, X(24), 51 * s);
+    ctx.fillStyle = '#5a3a2a';
+    ctx.fillRect(X(7), oy, X(3), 51 * s);
+    const run = g.run;
+    const f = run.barricade.hp / barricadeMax(run);
+    ctx.fillStyle = run.barricade.hp <= 0 ? '#5a1010' : `rgb(${(220 - f * 120) | 0},${(80 + f * 120) | 0},60)`;
+    ctx.fillRect(X(lvl.bx - 0.6), oy, Math.max(2, X(1.2)), 51 * s);
+    ctx.fillStyle = '#444038';
+    for (const c of lvl.cover) if (!c.soft) ctx.fillRect(X(c.x) - 1.5, Y(c.z) - 1.5, 3, 3);
+    ctx.fillStyle = '#f0b43a';
+    for (const t of lvl.traps) if (t.armed) ctx.fillRect(X(t.rec.x) - 1, Y(t.rec.z) - 1, 2, 2);
+    ctx.fillStyle = '#ff3a2a';
+    for (const e of lvl.enemies) if (e.alive) ctx.fillRect(X(e.pos.x) - 1.5, Y(e.pos.z) - 1.5, 3, 3);
+    ctx.fillStyle = '#6fd6ff';
+    for (const a of lvl.actors) if (a.alive) ctx.fillRect(X(a.pos.x) - 1.5, Y(a.pos.z) - 1.5, 3, 3);
+    this.drawArrow(ctx, X(g.player.pos.x), Y(g.player.pos.z), 5);
+  }
+
+  drawArrow(ctx, px, py, s) {
+    const a = this.game.player.yaw;
     const fx = -Math.sin(a);
     const fz = -Math.cos(a);
-    const s = Math.max(5, scale * 0.8);
     ctx.fillStyle = '#ffe8a0';
     ctx.strokeStyle = '#000';
     ctx.beginPath();
@@ -188,26 +318,27 @@ export class UI {
     ctx.stroke();
   }
 
-  drawMinimap() {
-    const g = this.game;
-    const lvl = g.level;
-    const p = g.player;
-    const ctx = this.mini;
-    const size = this.el.minimap.width;
-    const view = 26; // tiles across
-    const scale = size / view;
-    const ox = p.pos.x / TILE - view / 2;
-    const oz = p.pos.z / TILE - view / 2;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, size, size);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(lvl.mapCanvas, -ox * scale, -oz * scale, lvl.d.W * scale, lvl.d.H * scale);
-    this.drawMarkers(ctx, ox, oz, scale, false);
+  drawMarkers(ctx, ox, oz, scale) {
+    const lvl = this.game.level;
+    const p = this.game.player;
+    const toX = (x) => (x / TILE - ox) * scale;
+    const toY = (z) => (z / TILE - oz) * scale;
+    for (const m of lvl.mapMarkers()) {
+      ctx.fillStyle = m.color;
+      const r = Math.max(2.5, scale * 0.35);
+      if (m.shape === 'square') ctx.fillRect(toX(m.x) - r, toY(m.z) - r, r * 2, r * 2);
+      else {
+        ctx.beginPath();
+        ctx.arc(toX(m.x), toY(m.z), r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    this.drawArrow(ctx, toX(p.pos.x), toY(p.pos.z), Math.max(5, scale * 0.8));
   }
 
   drawBigMap() {
-    const g = this.game;
-    const lvl = g.level;
+    const lvl = this.game.level;
+    if (lvl.kind !== 'building') return;
     const c = this.el.bigmap;
     const W = lvl.d.W;
     const H = lvl.d.H;
@@ -222,62 +353,390 @@ export class UI {
     ctx.fillRect(0, 0, c.width, c.height);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(lvl.mapCanvas, 0, 0, W * scale, H * scale);
-    this.drawMarkers(ctx, 0, 0, scale, true);
+    this.drawMarkers(ctx, 0, 0, scale);
   }
 
   toggleMap(force) {
-    this.mapOpen = force ?? !this.mapOpen;
-    this.el.mapScreen.classList.toggle('show', this.mapOpen);
     const lvl = this.game.level;
-    if (lvl)
-      this.el.mapLegend.textContent = lvl.mapOwned
-        ? "Cartographer's map — every diamond revealed."
-        : 'Only what you have seen. Buy a map from the Keeper to reveal the level.';
+    this.mapOpen = (force ?? !this.mapOpen) && lvl?.kind === 'building';
+    this.el.mapScreen.classList.toggle('show', this.mapOpen);
+    if (lvl?.kind === 'building') this.el.mapLegend.textContent = `${lvl.loc.name} — only what you have seen.`;
   }
 
-  // ------------------------------------------------------------ shop
-  buildShop() {
-    const box = this.el.shopItems;
-    box.innerHTML = '';
-    SHOP_ITEMS.forEach((item, i) => {
-      const card = document.createElement('button');
-      card.className = 'card';
-      card.dataset.id = item.id;
-      card.innerHTML = `<div class="key">${(i + 1) % 10}</div><div class="icon">${item.icon}</div>
-        <div class="name">${item.name}</div><div class="desc">${item.desc}</div>
-        <div class="tier"></div><div class="price"></div>`;
-      card.addEventListener('click', () => this.game.buy(item.id));
-      box.appendChild(card);
-    });
+  // ------------------------------------------------------------ panels
+  openPanel(kind, arg) {
+    this.panel = { kind, arg, sel: this.panel?.kind === kind ? this.panel.sel : null, tab: arg === 'regional' ? 'regional' : 'local', comps: new Set() };
+    this.el.panel.classList.add('show');
+    this.el.hud.classList.add('dim');
+    this.renderPanel();
+  }
+  closePanel() {
+    this.panel = null;
+    this.el.panel.classList.remove('show');
+    this.el.hud.classList.remove('dim');
   }
 
-  refreshShop() {
+  renderPanel() {
+    const P = this.panel;
+    if (!P) return;
+    const r = {
+      armory: () => this.panelArmory(),
+      survivor: () => this.panelSurvivor(),
+      barricade: () => this.panelBarricade(),
+      turret: () => this.panelTurret(),
+      map: () => this.panelMap(),
+      sleep: () => this.panelSleep(),
+      report: () => this.panelReport(),
+    }[P.kind]();
+    this.el.panelTitle.textContent = r.title;
+    this.el.panelSub.innerHTML = r.sub || '';
+    this.el.panelBody.innerHTML = r.body;
+    const close = $('panelClose');
+    close.textContent = r.close || 'CLOSE [E]';
+    if (P.kind === 'map' && P.tab === 'local') this.drawLocalMap();
+    if (P.kind === 'map' && P.tab === 'regional') this.drawRegionalMap();
+  }
+
+  resLine() {
+    const run = this.game.run;
+    return `<span class="r-scrap">⚙ ${run.scrap} scrap</span> · <span class="r-coal">◼ ${run.coal} coal</span> · <span class="r-med">✚ ${run.medkits} med kits</span>`;
+  }
+
+  holderLabel(uid) {
+    const run = this.game.run;
+    const h = holderOf(run, uid);
+    if (!h) return 'on the rack';
+    if (h === 'player') return run.loadout.primary === uid ? 'you · primary' : 'you · secondary';
+    return h.name.split(' ')[0];
+  }
+
+  panelArmory() {
     const g = this.game;
-    const p = g.player;
-    this.el.shopGold.textContent = p.gold;
-    this.el.shopLevel.textContent = `Level ${g.levelNum}`;
-    for (const card of this.el.shopItems.children) {
-      const item = SHOP_ITEMS.find((it) => it.id === card.dataset.id);
-      const price = itemPrice(item, g.levelNum, p);
-      const st = g.shopState(item);
-      card.querySelector('.price').textContent = st.maxed ? '—' : `${price} gold`;
-      card.querySelector('.tier').textContent = st.info;
-      card.disabled = st.maxed || p.gold < price;
-      card.classList.toggle('poor', !st.maxed && p.gold < price);
-      card.classList.toggle('maxed', st.maxed);
+    const run = g.run;
+    const P = this.panel;
+    const list = run.weapons
+      .slice()
+      .sort((a, b) => RARITY_ORDER.indexOf(WEAPONS[b.id].rarity) - RARITY_ORDER.indexOf(WEAPONS[a.id].rarity) || WEAPONS[a.id].name.localeCompare(WEAPONS[b.id].name));
+    if (P.sel == null || !weaponByUid(run, P.sel)) P.sel = run.loadout.primary ?? list[0]?.uid ?? null;
+    let left = `<div class="box"><h3>Weapons (${list.length})</h3><div class="wlist">`;
+    for (const w of list) {
+      const def = WEAPONS[w.id];
+      const lv = Object.values(w.up || {}).reduce((a, b) => a + b, 0);
+      left += `<button class="witem ${P.sel === w.uid ? 'sel' : ''}" data-act="selw" data-uid="${w.uid}"><span>${rname(def)}${lv ? ` <small>+${lv}</small>` : ''}</span><small>${esc(this.holderLabel(w.uid))}</small></button>`;
     }
+    left += `</div></div><div class="box" style="margin-top:8px"><h3>Ammunition</h3><div class="ammo-grid">`;
+    for (const k of AMMO_ORDER) left += `<span>${AMMO[k].name}</span><b>${run.ammo[k] || 0}</b>`;
+    left += `</div></div>`;
+
+    let mid = '<div class="box">';
+    const inst = P.sel != null ? weaponByUid(run, P.sel) : null;
+    if (inst) {
+      const def = WEAPONS[inst.id];
+      const s = weaponStats(inst, run.player.level);
+      const melee = def.cat === 'melee';
+      mid += `<h3 style="font-size:30px">${rname(def)}</h3><div class="muted">${RARITY[def.rarity].name} ${CATEGORY[def.cat]}${def.ammo ? ` · uses ${AMMO[def.ammo].name.toLowerCase()}` : ''}${def.noSurvivor ? ' · <span class="bad">player only</span>' : ''}</div>`;
+      mid += `<div style="margin:6px 0">`;
+      mid += `<div class="stat-row"><span>Damage</span>${bar(s.dmg * s.pellets, 300)}<span>${Math.round(s.dmg)}${s.pellets > 1 ? '×' + s.pellets : ''}</span></div>`;
+      mid += `<div class="stat-row"><span>${melee ? 'Swing rate' : 'Fire rate'}</span>${bar(s.rate, 20)}<span>${s.rate.toFixed(1)}/s</span></div>`;
+      if (!melee && def.cat !== 'thrown') mid += `<div class="stat-row"><span>Magazine</span>${bar(s.mag, 100)}<span>${s.mag}</span></div>`;
+      mid += `<div class="stat-row"><span>${melee ? 'Reach' : 'Range'}</span>${bar(s.range, melee ? 3 : 150)}<span>${s.range.toFixed(melee ? 1 : 0)}m</span></div>`;
+      if (!melee && def.cat !== 'thrown') mid += `<div class="stat-row"><span>Accuracy</span>${bar(1 - s.spread * 4, 1)}<span>${Math.round((1 - s.spread * 4) * 100)}%</span></div>`;
+      if (s.splash) mid += `<div class="stat-row"><span>Blast</span>${bar(s.splash, 8)}<span>${s.splash}m</span></div>`;
+      if (s.pierce) mid += `<div class="stat-row"><span>Pierces</span>${bar(s.pierce, 6)}<span>${s.pierce}</span></div>`;
+      mid += `</div><div>Held by: <b class="gold">${esc(this.holderLabel(inst.uid))}</b></div>`;
+      mid += `<div style="margin:6px 0"><button class="pbtn" data-act="equip" data-slot="0">Equip as primary</button><button class="pbtn" data-act="equip" data-slot="1">Equip as secondary</button><button class="pbtn" data-act="rack">Put on the rack</button></div>`;
+      const camp = run.survivors.filter((v) => v.status === 'camp' && v.hp > 0);
+      if (camp.length) {
+        mid += `<div>Give to: `;
+        for (const v of camp) mid += `<button class="pbtn" data-act="give" data-id="${v.id}" ${def.noSurvivor || v.weapon === inst.uid ? 'disabled' : ''}>${esc(v.name.split(' ')[0])}</button>`;
+        mid += `</div>`;
+      }
+      mid += `<h3 style="margin-top:10px">Workbench</h3>`;
+      for (const k of upgradeKeys(def)) {
+        const lv = inst.up?.[k] || 0;
+        const cost = upgradeCost(def, lv);
+        const maxed = lv >= UPG_MAX;
+        mid += `<div class="upg"><span>${UPGRADES[k].name}</span><span class="pips">${'●'.repeat(lv)}${'○'.repeat(UPG_MAX - lv)}</span><span>${
+          maxed ? '<span class="muted">maxed</span>' : `<button class="pbtn" data-act="upg" data-key="${k}" ${run.scrap < cost ? 'disabled' : ''}>Upgrade · ⚙ ${cost}</button>`
+        }</span></div>`;
+      }
+    } else mid += '<div class="muted">No weapons.</div>';
+    mid += '</div>';
+
+    let right = `<div class="box"><h3>Loadout</h3>`;
+    const nm = (uid) => {
+      const w = uid != null ? weaponByUid(run, uid) : null;
+      return w ? rname(WEAPONS[w.id]) : '<span class="muted">fists</span>';
+    };
+    right += `<div>[1] ${nm(run.loadout.primary)}</div><div>[2] ${nm(run.loadout.secondary)}</div>`;
+    right += `<h3 style="margin-top:10px">Survivors</h3>`;
+    const alive = run.survivors.filter((v) => v.status !== 'dead');
+    if (!alive.length) right += `<div class="muted">No one yet. Search the area for survivors.</div>`;
+    for (const v of alive) right += `<div>${esc(v.name)} <small class="muted">L${v.level}${v.status === 'away' ? ' · out' : ''}</small><br>&nbsp;&nbsp;${nm(v.weapon)}</div>`;
+    right += `</div>`;
+    return { title: 'WEAPON RACK', sub: this.resLine(), body: `<div class="cols"><div>${left}</div><div>${mid}</div><div>${right}</div></div>` };
   }
 
-  showShop(on) {
-    this.el.shop.classList.toggle('show', on);
-    this.el.hud.classList.toggle('dim', on);
-    if (on) this.refreshShop();
+  panelSurvivor() {
+    const g = this.game;
+    const run = g.run;
+    const s = run.survivors.find((v) => v.id === this.panel.arg);
+    if (!s) return { title: 'GONE', body: '' };
+    const max = survivorMaxHp(s);
+    const w = s.weapon != null ? weaponByUid(run, s.weapon) : null;
+    let body = `<div class="cols2"><div class="box"><h3>${esc(s.name)} — level ${s.level}</h3>`;
+    body += `<div class="stat-row"><span>Health</span>${bar(s.hp, max)}<span>${Math.ceil(s.hp)}/${max}</span></div>`;
+    body += `<div class="stat-row"><span>Experience</span>${bar(s.xp, xpToNext(s.level))}<span>${s.xp}/${xpToNext(s.level)}</span></div>`;
+    body += `<div class="stat-row"><span>Aim</span>${bar(survivorAim(s), 1)}<span>${Math.round(survivorAim(s) * 100)}%</span></div>`;
+    body += `<div class="stat-row"><span>Speed</span>${bar(survivorSpeed(s), 6)}<span>${survivorSpeed(s).toFixed(1)}</span></div>`;
+    body += `<div class="stat-row"><span>Stamina</span>${bar(survivorStamina(s), 200)}<span>${survivorStamina(s)}</span></div>`;
+    body += `<div style="margin-top:6px">Kills: ${s.kills || 0}</div>`;
+    body += `<div style="margin-top:8px"><button class="pbtn big" data-act="heal" ${run.medkits <= 0 || s.hp >= max ? 'disabled' : ''}>Use a med kit (+60%) · ${run.medkits} left</button></div></div>`;
+    body += `<div class="box"><h3>Weapon</h3><div style="font-size:24px">${w ? rname(WEAPONS[w.id]) : '<span class="muted">Fists</span>'}</div>`;
+    if (w) body += `<button class="pbtn" data-act="stake">Take it back</button>`;
+    body += `<div class="muted" style="margin-top:8px">Survivors never run out of ammo, but can't use launchers, grenades or flamethrowers. If they die, their weapon is lost.</div>`;
+    const rack = run.weapons.filter((x) => !holderOf(run, x.uid) && !WEAPONS[x.id].noSurvivor);
+    body += `<h3 style="margin-top:8px">From the rack</h3><div class="wlist" style="max-height:34vh">`;
+    if (!rack.length) body += `<div class="muted">Nothing on the rack they can use.</div>`;
+    for (const x of rack) body += `<button class="witem" data-act="sgive" data-uid="${x.uid}"><span>${rname(WEAPONS[x.id])}</span><small>${CATEGORY[WEAPONS[x.id].cat]}</small></button>`;
+    body += `</div></div></div>`;
+    return { title: 'SURVIVOR', sub: this.resLine(), body };
+  }
+
+  panelBarricade() {
+    const run = this.game.run;
+    const b = run.barricade;
+    const max = barricadeMax(run);
+    const missing = Math.max(0, max - b.hp);
+    const full = Math.ceil(missing / BARRICADE.hpPerScrap);
+    const part = Math.ceil(Math.min(60, missing) / BARRICADE.hpPerScrap);
+    const imp = BARRICADE.improveCost(b.level);
+    let body = `<div class="box" style="max-width:720px;margin:auto">`;
+    body += `<div class="stat-row"><span>Strength</span>${bar(b.hp, max)}<span>${Math.ceil(b.hp)}/${max}</span></div>`;
+    body += `<div>Reinforcement level ${b.level} / ${BARRICADE.maxLevel}${b.hp <= 0 ? ' · <span class="bad">breached — zombies will walk straight in</span>' : ''}</div>`;
+    body += `<div style="margin-top:10px"><button class="pbtn big" data-act="repair" data-amt="60" ${!missing || run.scrap < part ? 'disabled' : ''}>Patch up ${Math.min(60, Math.ceil(missing))} hp · ⚙ ${part}</button>`;
+    body += `<button class="pbtn big" data-act="repair" data-amt="all" ${!missing || run.scrap < 1 ? 'disabled' : ''}>Repair fully · ⚙ ${full}${run.scrap < full && missing ? ' (partial)' : ''}</button></div>`;
+    if (b.level < BARRICADE.maxLevel)
+      body += `<div style="margin-top:10px"><button class="pbtn big" data-act="improve" ${run.scrap < imp ? 'disabled' : ''}>Reinforce to level ${b.level + 1} (+${BARRICADE.perLevel} max strength) · ⚙ ${imp}</button></div>`;
+    else body += `<div class="good" style="margin-top:10px">Fully reinforced.</div>`;
+    body += `<p class="muted">Each scrap restores ${BARRICADE.hpPerScrap} strength. Reinforcing adds sandbags and sheet metal, and the new strength comes ready-built.</p></div>`;
+    return { title: 'THE BARRICADE', sub: this.resLine(), body };
+  }
+
+  panelTurret() {
+    const run = this.game.run;
+    const i = this.panel.arg;
+    const t = run.turrets[i];
+    let body = `<div class="box" style="max-width:760px;margin:auto">`;
+    if (t) {
+      const d = TURRETS[t.type];
+      body += `<h3>${d.name}</h3><div>Range ${d.range}m · ${d.splash ? `blast ${d.splash}m · ` : ''}${d.dmg} damage · ${d.rate}/s</div><p class="muted">Turrets never run out of ammunition and can't be destroyed. They only fire at targets beyond the barricade.</p>`;
+    } else {
+      body += `<h3>Train car ${i + 1}</h3><p class="muted">Each car can carry one turret. A turret needs scrap and a blueprint found while scavenging.</p>`;
+      for (const k of TURRET_ORDER) {
+        const d = TURRETS[k];
+        const have = run.blueprints[k];
+        const can = have > 0 && run.scrap >= d.cost;
+        body += `<div class="turret-opt"><div><b>${d.name}</b> <small class="muted">(${d.rarity} blueprint)</small><br><small class="muted">Range ${d.range}m · ${d.dmg} dmg${d.splash ? ` · ${d.splash}m blast` : ''} · ${d.rate}/s${d.minRange ? ` · can't hit within ${d.minRange}m of the barricade` : ''} · blueprints: ${have}</small></div><button class="pbtn big" data-act="build" data-type="${k}" ${can ? '' : 'disabled'}>Build · ⚙ ${d.cost}</button></div>`;
+      }
+    }
+    body += `</div>`;
+    return { title: 'TRAIN TURRET', sub: this.resLine(), body };
+  }
+
+  panelSleep() {
+    const run = this.game.run;
+    return {
+      title: 'END THE DAY?',
+      sub: '',
+      body: `<div class="box" style="max-width:640px;margin:auto;text-align:center"><p>You still have <b class="gold">${run.hours} hours</b> of daylight.</p><p class="muted">Tonight there is a ${Math.round(
+        waveChance(run) * 100
+      )}% chance the dead come for the camp.</p><button class="pbtn big" data-act="sleepyes">Sleep now</button><button class="pbtn big" data-act="close">Not yet</button></div>`,
+    };
+  }
+
+  panelReport() {
+    const lines = this.panel.arg || [];
+    let body = `<div class="box report" style="max-width:820px;margin:auto">`;
+    for (const l of lines) body += `<div class="${l.kind || ''}">${esc(l.text)}</div>`;
+    body += `</div>`;
+    return { title: this.panel.title || 'REPORT', sub: this.panel.sub || '', body, close: 'CONTINUE [E]' };
+  }
+
+  // ---------- maps ----------
+  panelMap() {
+    const g = this.game;
+    const run = g.run;
+    const P = this.panel;
+    const tabs = `<div class="tabs"><button class="pbtn ${P.tab === 'local' ? 'on' : ''}" data-act="tab" data-tab="local">Local map</button><button class="pbtn ${P.tab === 'regional' ? 'on' : ''}" data-act="tab" data-tab="regional">Regional map</button></div>`;
+    const sub = `${this.resLine()} · <span class="gold">${run.phase === 'day' ? `${run.hours}h of daylight` : 'too dark to travel'}</span>`;
+    if (P.tab === 'regional') return { title: 'REGIONAL MAP', sub, body: tabs + this.regionalBody() };
+    const locs = run.locality.locations;
+    let markers = '<div class="camp-dot" style="left:50%;top:50%">⛺</div>';
+    for (const l of locs) {
+      const L = LOCATION_TYPES[l.type];
+      const cls = ['loc', P.sel === l.id ? 'sel' : '', l.searched ? 'done' : '', l.claimed ? 'claim' : ''].join(' ');
+      markers += `<button class="${cls}" style="left:${(l.x * 100).toFixed(1)}%;top:${(l.y * 100).toFixed(1)}%" data-act="loc" data-id="${l.id}" title="${esc(l.name)}">${L.icon}<span class="lbl">${esc(l.name)}</span></button>`;
+    }
+    const left = `<div class="mapwrap"><canvas id="localMapCanvas" width="640" height="480"></canvas>${markers}</div>`;
+    const loc = locs.find((l) => l.id === P.sel);
+    let right = '<div class="box">';
+    if (!loc) right += `<h3>${esc(run.locality.name)}</h3><div class="muted">Pick a location on the map. Searching costs daylight hours. Bring survivors along, or send one alone to search it for you.</div>`;
+    else {
+      const L = LOCATION_TYPES[loc.type];
+      right += `<h3>${L.icon} ${esc(loc.name)}</h3><div class="muted">${L.name}</div>`;
+      right += `<div>Danger: <span class="skulls">${skulls(loc.difficulty)}</span><span class="muted">${skulls(6 - loc.difficulty).replace(/☠/g, '·')}</span></div>`;
+      right += `<div>Search time: <b class="gold">${loc.hours} hours</b></div>`;
+      right += `<div class="muted" style="font-size:17px">Often holds: ${this.lootHint(L)}</div>`;
+      if (loc.searched) right += `<div class="muted" style="margin-top:8px">Already searched.</div>`;
+      else if (loc.claimed) right += `<div class="good" style="margin-top:8px">A survivor is searching it now.</div>`;
+      else if (run.phase !== 'day') right += `<div class="bad" style="margin-top:8px">It's getting dark. Nobody leaves camp now.</div>`;
+      else {
+        const camp = run.survivors.filter((v) => v.status === 'camp' && v.hp > 0);
+        right += `<div style="margin-top:8px"><button class="pbtn big" data-act="search" ${run.hours < loc.hours ? 'disabled' : ''}>Search it${P.comps.size ? ` with ${P.comps.size}` : ''} · ${loc.hours}h</button></div>`;
+        if (run.hours < loc.hours) right += `<div class="bad">Not enough daylight left.</div>`;
+        if (camp.length) {
+          right += `<div style="margin-top:6px">Bring along: `;
+          for (const v of camp) right += `<span class="chip ${P.comps.has(v.id) ? 'on' : ''}" data-act="comp" data-id="${v.id}">${esc(v.name.split(' ')[0])} L${v.level}</span>`;
+          right += `</div><div style="margin-top:8px">Send alone (back at dusk):</div>`;
+          for (const v of camp) {
+            const pc = Math.round(expeditionChance(run, v, loc) * 100);
+            const w = v.weapon != null ? weaponByUid(run, v.weapon) : null;
+            right += `<div><button class="pbtn" data-act="send" data-id="${v.id}">Send ${esc(v.name.split(' ')[0])}</button> <span class="${pc >= 70 ? 'good' : pc >= 45 ? 'gold' : 'bad'}">${pc}% survival</span> <small class="muted">L${v.level} · ${w ? esc(WEAPONS[w.id].name) : 'unarmed'}</small></div>`;
+          }
+        } else right += `<div class="muted" style="margin-top:6px">With survivors you could send someone out alone.</div>`;
+      }
+    }
+    right += '</div>';
+    return { title: 'LOCAL MAP', sub, body: tabs + `<div class="cols2"><div>${left}</div><div>${right}</div></div>` };
+  }
+
+  lootHint(L) {
+    const names = { scrap: 'scrap', coal: 'coal', medkit: 'med kits', ammo: 'ammo', weapon: 'weapons', trap: 'traps', blueprint: 'blueprints' };
+    return Object.entries(L.loot)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([k]) => names[k])
+      .join(', ');
+  }
+
+  drawLocalMap() {
+    const c = $('localMapCanvas');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    const run = this.game.run;
+    const biome = run.locality.biome;
+    ctx.fillStyle = biome === 'desert' ? '#d8bc88' : biome === 'tundra' ? '#dfe4e6' : '#c8c098';
+    ctx.fillRect(0, 0, 640, 480);
+    let seed = run.locality.seed;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    // terrain blotches
+    for (let i = 0; i < 40; i++) {
+      ctx.fillStyle = biome === 'forest' ? 'rgba(60,90,50,0.25)' : biome === 'desert' ? 'rgba(160,110,60,0.2)' : 'rgba(150,170,190,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(rnd() * 640, rnd() * 480, 20 + rnd() * 50, 14 + rnd() * 30, rnd() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // the railway through camp
+    ctx.strokeStyle = '#3a2a1a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(320, 0);
+    ctx.lineTo(320, 480);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    for (let y = 0; y < 480; y += 10) {
+      ctx.beginPath();
+      ctx.moveTo(314, y);
+      ctx.lineTo(326, y);
+      ctx.stroke();
+    }
+    // roads to every location
+    ctx.strokeStyle = 'rgba(90,60,30,0.55)';
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 2;
+    for (const l of run.locality.locations) {
+      ctx.beginPath();
+      ctx.moveTo(320, 240);
+      ctx.quadraticCurveTo(320 + (l.x * 640 - 320) * 0.5 + (rnd() - 0.5) * 60, 240 + (l.y * 480 - 240) * 0.5 + (rnd() - 0.5) * 60, l.x * 640, l.y * 480);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(40,20,10,0.6)';
+    ctx.strokeRect(6, 6, 628, 468);
+    ctx.fillStyle = '#5a3a20';
+    ctx.font = '20px serif';
+    ctx.fillText(run.locality.name, 14, 30);
+  }
+
+  regionalBody() {
+    const g = this.game;
+    const run = g.run;
+    const opts = run.region.options;
+    let markers = `<div class="camp-dot" style="left:22%;top:50%">◉</div><div class="loc" style="left:22%;top:62%;width:auto;height:auto;border-radius:3px;padding:0 6px;font-size:16px;pointer-events:none">${esc(run.locality.name)}</div>`;
+    opts.forEach((o, i) => {
+      const x = 70 + o.dx * 40;
+      const y = 50 + (i - 1) * 28 + o.dy * 30;
+      markers += `<button class="loc ${this.panel.sel === 'r' + i ? 'sel' : ''}" style="left:${x}%;top:${y}%" data-act="rsel" data-i="${i}">${BIOMES[o.biome].icon}<span class="lbl">${esc(o.name)}</span></button>`;
+    });
+    const left = `<div class="mapwrap"><canvas id="regionMapCanvas" width="640" height="480"></canvas>${markers}</div>`;
+    let right = `<div class="box"><h3>Move the train</h3><div class="muted">Moving rerolls everything around you: new buildings, new survivors, new terrain. Untriggered traps are packed up and come with you.</div>`;
+    const busy = run.survivors.some((s) => s.status === 'away');
+    const i = this.panel.sel && String(this.panel.sel).startsWith('r') ? +String(this.panel.sel).slice(1) : null;
+    if (i != null) {
+      const o = opts[i];
+      const b = BIOMES[o.biome];
+      right += `<h3 style="margin-top:8px">${b.icon} ${esc(o.name)}</h3><div>${b.name}${o.threat ? ' · <span class="bad">dangerous country</span>' : ''}</div>`;
+      right += `<div>Coal needed: <b class="${run.coal >= o.coal ? 'good' : 'bad'}">${o.coal}</b> (you have ${run.coal})</div><div>Takes ${TRAVEL_HOURS} hours of daylight.</div>`;
+      const can = run.coal >= o.coal && run.phase === 'day' && run.hours >= TRAVEL_HOURS && !busy;
+      right += `<button class="pbtn big" data-act="travel" data-i="${i}" ${can ? '' : 'disabled'}>Fire up the engine</button>`;
+      if (busy) right += `<div class="bad">Wait for the survivors you sent out to come back.</div>`;
+      else if (run.phase !== 'day' || run.hours < TRAVEL_HOURS) right += `<div class="bad">Not enough daylight to travel today.</div>`;
+    } else right += `<div style="margin-top:8px">Pick a destination. You have <b>${run.coal}</b> coal.</div>`;
+    right += `</div>`;
+    return `<div class="cols2"><div>${left}</div><div>${right}</div></div>`;
+  }
+
+  drawRegionalMap() {
+    const c = $('regionMapCanvas');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    const run = this.game.run;
+    ctx.fillStyle = '#c8b48a';
+    ctx.fillRect(0, 0, 640, 480);
+    let seed = run.seed + run.localityCount * 31;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let i = 0; i < 30; i++) {
+      ctx.fillStyle = ['rgba(60,90,50,0.22)', 'rgba(170,120,60,0.2)', 'rgba(170,190,210,0.3)'][i % 3];
+      ctx.beginPath();
+      ctx.ellipse(rnd() * 640, rnd() * 480, 30 + rnd() * 60, 20 + rnd() * 40, rnd() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = '#3a2a1a';
+    ctx.lineWidth = 3;
+    run.region.options.forEach((o, i) => {
+      const x = (0.7 + o.dx * 0.4) * 640;
+      const y = (0.5 + (i - 1) * 0.28 + o.dy * 0.3) * 480;
+      ctx.beginPath();
+      ctx.moveTo(0.22 * 640, 0.5 * 480);
+      ctx.bezierCurveTo(0.4 * 640, 0.5 * 480, 0.5 * 640, y, x, y);
+      ctx.stroke();
+    });
+    ctx.beginPath();
+    ctx.moveTo(0, 0.5 * 480);
+    ctx.lineTo(0.22 * 640, 0.5 * 480);
+    ctx.stroke();
+    ctx.fillStyle = '#5a3a20';
+    ctx.font = '18px serif';
+    ctx.fillText(`Localities visited: ${run.stats.localities}`, 14, 26);
   }
 
   // ------------------------------------------------------------ screens
-  showTitle(on, best) {
+  showTitle(on, best, cont) {
     this.el.title.classList.toggle('show', on);
-    if (best) this.el.bestLine.textContent = best;
+    this.el.bestLine.textContent = best || '';
+    this.el.continueBtn.style.display = cont ? '' : 'none';
+    if (cont) this.el.continueBtn.textContent = cont;
   }
   showPause(on) {
     this.el.pause.classList.toggle('show', on);
@@ -285,10 +744,9 @@ export class UI {
   showHud(on) {
     this.el.hud.classList.toggle('show', on);
   }
-  showDeath(cause, lives) {
+  showDeath(cause) {
     this.el.deathCause.textContent = DEATH_TEXT[cause] || 'The dark takes you.';
-    this.el.deathSub.textContent =
-      lives > 0 ? `${lives} ${lives === 1 ? 'life' : 'lives'} remaining. You will wake in the sanctuary.` : 'No lives remain.';
+    this.el.deathSub.textContent = 'There is no one left to carry on.';
     this.el.death.classList.add('show');
   }
   hideDeath() {
@@ -298,11 +756,14 @@ export class UI {
     this.el.gameover.classList.toggle('show', on);
     if (!on) return;
     this.el.goStats.innerHTML = `
-      <div><span>Deepest level</span><b>${stats.level}</b></div>
-      <div><span>Diamonds recovered</span><b>${stats.diamonds}</b></div>
-      <div><span>Gold collected</span><b>${stats.gold}</b></div>
-      <div><span>Monsters slain</span><b>${stats.kills}</b></div>
-      <div class="best"><span>Best ever</span><b>Level ${stats.best}</b></div>`;
+      <div><span>Nights survived</span><b>${stats.nights}</b></div>
+      <div><span>Hordes repelled</span><b>${stats.waves}</b></div>
+      <div><span>Zombies killed</span><b>${stats.kills}</b></div>
+      <div><span>Places searched</span><b>${stats.searched}</b></div>
+      <div><span>Localities visited</span><b>${stats.localities}</b></div>
+      <div><span>Survivors recruited / lost</span><b>${stats.recruited} / ${stats.lost}</b></div>
+      <div><span>Your level</span><b>${stats.level}</b></div>
+      <div class="best"><span>Best ever</span><b>${stats.best} ${stats.best === 1 ? 'night' : 'nights'}</b></div>`;
   }
 
   bindSettings() {
@@ -333,3 +794,4 @@ export class UI {
     }
   }
 }
+

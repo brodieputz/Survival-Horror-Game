@@ -9,6 +9,7 @@ export class Input {
     this.mouseDY = 0;
     this.mouseDown = false;
     this.clicked = false;
+    this.wheel = 0;
     this.locked = false;
     this.sensitivity = 1;
     this.onLockChange = null;
@@ -35,6 +36,13 @@ export class Input {
         this.clicked = true;
       }
     });
+    document.addEventListener(
+      'wheel',
+      (e) => {
+        if (this.locked && Math.abs(e.deltaY) > 2) this.wheel = Math.sign(e.deltaY);
+      },
+      { passive: true }
+    );
     document.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.mouseDown = false;
     });
@@ -72,5 +80,6 @@ export class Input {
     this.mouseDX = 0;
     this.mouseDY = 0;
     this.clicked = false;
+    this.wheel = 0;
   }
 }

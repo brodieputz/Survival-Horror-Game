@@ -804,3 +804,5 @@ export function makeViewModel() {
   });
   return { group: g, gun, torch, flash, lens };
 }
+
+export { box, pivot, glowSprite, L as lambert, B as basic };

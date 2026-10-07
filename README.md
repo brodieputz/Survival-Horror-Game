@@ -1,6 +1,6 @@
 # Dread Depths
 
-A first-person survival horror game built with [three.js](https://threejs.org). Every level is a procedurally generated dungeon. Each one is bigger than the last and has more monsters. The run never ends: the goal is to see how deep you can get before your last life runs out.
+A first-person survival horror game built with [three.js](https://threejs.org), inspired by *The Last Stand 2*. Your camp sits beside a stalled train. By day you scavenge the buildings around you, recruit and arm survivors, and fortify the camp. By night the dead may come across the field. When you have enough coal, you can move the train somewhere new. There is one life and no end. The score is how many nights you survive.
 
 ## Running it
 
@@ -14,65 +14,108 @@ npm run dev     # rebuilds on change and serves at http://localhost:8080
 npm run build   # writes the minified bundle to dist/game.js
 ```
 
-## How to play
+## The camp
 
-* You start each level in the **sanctuary** (the safe room). Monsters cannot enter it. A small barred window lets you peek into the dungeon outside.
-* Find every **diamond** on the level. Level 1 has one diamond, and each level after that adds one more. Then go back to the sanctuary and open the hatch to go down to the next level.
-* **Gold** lies around the dungeon and inside crates. Spend it with **the Keeper** in the sanctuary. Prices are high and rise as you go deeper, so even if you collect carefully you'll only afford a few items per level:
-  * Extra life, med kit, skeleton key (opens one locked crate), bear trap, revolver rounds
-  * Upgrades: Vitality (max health), Swiftness (speed), Endurance (stamina), Midas' Touch (gold multiplier)
-  * Cartographer's map: shows the whole level and every diamond on the map
-* The **minimap** fills in as you explore. Press **M** or **Tab** to open the full map.
-* You start with **3 lives**. Each death sends you back to the sanctuary and costs you a quarter of your gold.
+The camp is a long strip beside the train:
 
-### Controls
+| Area | What's there |
+| --- | --- |
+| **The train** (back) | Five cars. Each can carry one auto turret. |
+| **Sleeping area** | Your tent (sleep to end the day), the map table, the weapon rack and workbench, the campfire, and a bedroll for each survivor. |
+| **The barricade** | The only thing between the camp and the horde. A gate in the middle stands open by day and is closed at night. |
+| **The field** | A long stretch with trees, rocks and wrecks for cover. The horde crosses it at night, and your traps go here. |
+
+## A day
+
+You have **12 hours of daylight**. Only scavenging and moving the train use hours. Everything you do in camp is free:
+
+* **Map table: local map.** This shows the places around you: gas stations, houses, apartment blocks, offices, warehouses, police stations, hospitals and military bases. Each has a danger rating, a search cost in hours, and its own likely loot.
+  * **Search it yourself.** You arrive outside the entrance and explore a procedurally generated interior that matches the kind of building. Leave by returning to where you came in.
+  * **Bring survivors along.** They follow you, fight, and level up. If they die, their weapon is lost.
+  * **Send a survivor alone.** Their odds are shown before you commit, based on their level, weapon and health and the location's danger. If they make it, they come back at dusk with everything inside. If not, they never come back.
+* **Map table: regional map.** Spend coal and 4 hours to move the train. Everything around you is rerolled: the buildings, the survivors and the terrain. The biome changes too (forest with rain, desert with dust, tundra with snow).
+* **Weapon rack and workbench.** Equip a primary and a secondary weapon, hand weapons to survivors, and spend scrap upgrading magazine size, range, damage, fire rate or accuracy. Each weapon can only be held by one person.
+* **Talk to a survivor.** See their level and stats, heal them with a med kit, or change their weapon.
+* **Barricade.** Spend scrap to repair it, or reinforce it for more maximum strength.
+* **Train cars.** Build a turret with scrap and a blueprint: machine gun (common), missile or artillery (rare). Turrets never run out of ammo, can't be destroyed, and only fire beyond the barricade.
+* **Traps** (press **T**, or use the crate by the gate). Place bear traps, land mines, tripwire spikes and kerosene tanks anywhere beyond the barricade. A kerosene tank explodes when shot. You can pick unused traps back up.
+
+When your hours run out it's **dusk**. You get one last chance to prepare, then sleep in your tent.
+
+## A night
+
+On the first night there is a 50% chance of a wave, and the chance rises by 1% every night. If a wave comes:
+
+* Zombies cross the field and batter the barricade. Once it breaks, they come for you and your survivors.
+* You can't go beyond the barricade at night. Survivors hold positions behind it and fight with whatever you gave them. **Survivors never run out of ammo, but you do.** They can't use launchers, grenades or the flamethrower.
+* Each wave is bigger than the last and brings tougher, faster types.
+* Clear the wave and dawn comes. You get a report, and the run is saved.
+
+If you die at any point, the run is over.
+
+## Leveling
+
+You and every survivor gain XP from kills. Levels raise health, stamina, speed and weapon handling. Survivors also aim better as they level up.
+
+## Weapons
+
+There are 51 weapons in five rarity tiers: common, uncommon, rare, epic and legendary. Every weapon from *The Last Stand 2* is included, plus many more:
+
+* **Melee** (never needs ammo): kitchen knife, bat, crowbar, pipe wrench, shovel, hatchet, machete, fire axe, sledgehammer, katana, chainsaw
+* **Pistols:** Glock 17, Beretta, service revolver, M1911, .357 Magnum, Desert Eagle, Glock 18 auto
+* **SMGs:** MAC-10, Uzi, UMP45, MP5, Thompson, Kriss Vector
+* **Shotguns:** double barrel, pump, sawn-off, SPAS-12, AA-12
+* **Rifles:** lever-action, SKS, M1 Garand, M4A1, AK-47, FN FAL, SCAR-H
+* **Sniper rifles:** hunting rifle, Dragunov, Barrett M82
+* **Machine guns:** M249 SAW, M60, minigun
+* **Launchers:** M79, Milkor MGL, RPG-7
+* **Bows:** recurve, compound bow, crossbow
+* **Thrown:** hand grenades, molotov cocktails
+* **Flamethrower**
+
+Ranged weapons draw from shared ammo pools: pistol, magnum, shells, rifle, sniper, arrows, rockets, 40mm, grenades, molotovs and fuel.
+
+## The dead
+
+| Zombie | Where | Behaviour |
+| --- | --- | --- |
+| **Walker** | everywhere | Slow and common. |
+| **Runner** | wave 2+, buildings | Sprints at you. |
+| **Grunt** | everywhere | Hunts by sight in buildings and marches with the horde. |
+| **Bloater / Rotter** | wave 3–4+ | Slow, with huge health. |
+| **Riot Zombie** | wave 5+, police and military | Armour halves body shots. Aim for the head. |
+| **Crawler** | after explosions | Explosions sometimes leave half a zombie still crawling. |
+| **Blood Hound** | wave 3+, buildings | Its shriek whips the horde into a frenzy. In buildings it calls the others, and hiding won't fool it. |
+| **Blind Brute** | wave 7+, dangerous buildings | Hunts by sound and smashes barricades. Shoot it and it charges. |
+| **Angel** | dangerous buildings only | Moves only when unseen. Can't be killed. Never joins a night raid. |
+
+Buildings keep the original hazards: spike pits, bear traps, tripwires, broken glass, and lockers and beds to hide in.
+
+## Controls
 
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
-| WASD | Move | Mouse | Look |
-| Shift | Run (uses stamina) | Space | Jump |
-| C | Crouch (quiet) | E | Interact / hide / leave hiding spot |
-| F | Flashlight on/off | Left click | Fire revolver |
-| R | Reload | H / 1 | Use med kit |
-| T / 2 | Place bear trap | M / Tab | Map |
-| Esc | Pause and settings | | |
-
-### Hiding
-
-You can hide in **lockers**, **wardrobes**, and **under beds and benches**. What happens next depends on whether a monster saw you hide:
-
-* If no monster saw you, a monster that was chasing you goes to where it last saw you, looks around for a moment, then moves on. A patrolling monster walks right past.
-* If a monster saw you hide, it comes over and **drags you out**, which hurts.
-* A **Blood Hound** that is already chasing you can't be fooled. It stands at your hiding spot and shrieks, and every monster that hears it comes to drag you out.
-
-### The monsters
-
-| Monster | Behaviour |
-| --- | --- |
-| **Grunt** | Patrols the halls and attacks on sight. Almost as fast as you, so you can outrun it. |
-| **Angel** | Moves only when you aren't looking at it, and it moves very fast. Freezes the instant you look at it. In the dark it counts as unseen, so keep your flashlight on it. It can't be killed, and if it reaches you, you die. |
-| **Blind Brute** | Can't see. It hunts by sound: footsteps, gunfire, broken glass. It is huge and takes many bullets to kill. Shooting it enrages it and it charges straight at you. It fights any Grunt it runs into and usually wins. |
-| **Blood Hound** | Small and fast. When it spots you it shrieks, and every monster nearby comes. Hiding spots don't fool it. |
-
-New monster types appear as you go deeper: Hounds from level 2, Brutes from level 3, Angels from level 4. Monster counts rise with every level.
-
-### Hazards
-
-* **Spike pits**: jump over them. If you fall in, you get impaled.
-* **Bear traps**: they hold you in place and make a loud noise.
-* **Tripwires**: spikes shoot out of the walls. Jump over the wire.
-* **Broken glass**: very loud to walk on, especially for the Brute. Crouch to make less noise.
-* **Crates**: some are locked and need a skeleton key. Locked crates hold better loot.
+| WASD | Move | Mouse | Look / aim |
+| Shift | Run | Space | Jump |
+| C | Crouch | E | Interact |
+| Click | Attack (hold for automatic weapons) | R | Reload |
+| 1 / 2 / Q / wheel | Switch weapon | H | Use a med kit |
+| T | Place traps (camp, by day) | F | Flashlight |
+| M / Tab | Map (in buildings) | Esc | Pause |
 
 ## Tech notes
 
-* Everything is procedural: there are no image or sound files. Textures are painted on canvases. Music and sound effects are synthesized with the Web Audio API. There are three music layers that crossfade: a calm one in the sanctuary, an eerie one in the dungeon, and a frantic one during chases. Sounds are positioned in 3D and are muffled when a wall is in the way.
-* The scene renders at reduced resolution for a retro look, with a shadow-casting flashlight. You can turn the retro look off in the pause menu.
+* Everything is procedural: there are no image or sound files. Textures are painted on canvases, and the music and sound effects are synthesised with the Web Audio API.
+* The run state is plain JSON (`src/run.js`) and is saved to `localStorage` each morning and whenever you're back in camp by day.
 * Source layout:
-  * `src/dungeon.js`: level generation (rooms, corridors with loops, placement of props, traps and monsters)
-  * `src/world.js`: geometry building, collision, line of sight, A* pathfinding
-  * `src/enemies.js`: monster AI
-  * `src/player.js`: player controller
-  * `src/audio.js`: music and sound
-  * `src/level.js`: per-level objects and logic
-  * `src/ui.js`: HUD, minimap, shop and menus
+  * `src/run.js`: the run state, survivors, XP, localities and locations with their pre-rolled loot, waves, the regional map, save/load
+  * `src/weapons.js`: the weapon catalog, ammo, rarity, upgrades and loot rolls
+  * `src/camp.js`: the camp scene (layout, barricade, flow field for the horde, traps, turrets, waves, weather)
+  * `src/building.js` and `src/dungeon.js`: building interiors generated per location type
+  * `src/enemies.js`: zombie AI (roaming in buildings, wave mode in camp)
+  * `src/survivors.js`: survivor NPCs (camp, defend, follow)
+  * `src/combat.js`: hitscan, projectiles, explosions, fire, melee and tracers
+  * `src/player.js`: the player controller and weapons
+  * `src/ui.js`: the HUD, minimaps and management panels
+  * `src/actors.js`, `src/gunModels.js`, `src/props.js`, `src/models.js`: low-poly models
+  * `src/world.js`: geometry, collision, line of sight and A* pathfinding
