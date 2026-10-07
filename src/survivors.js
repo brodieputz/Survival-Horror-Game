@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { makeHuman } from './actors.js';
 import { makeGunModel } from './gunModels.js';
-import { WEAPONS, weaponStats } from './weapons.js';
+import { WEAPONS, weaponStats, isExplosive } from './weapons.js';
 import { survivorSpeed, survivorAim, weaponByUid, removeWeapon } from './run.js';
 import { dist2D, dampAngle, angleDiff, clamp } from './util.js';
 
@@ -54,7 +54,7 @@ export class SurvivorActor {
     this.gun = null;
     const run = this.game.run;
     const inst = this.rec.weapon != null ? weaponByUid(run, this.rec.weapon) : null;
-    if (inst && !WEAPONS[inst.id].noSurvivor) {
+    if (inst) {
       this.stats = weaponStats(inst, this.rec.level);
       this.gun = makeGunModel(WEAPONS[inst.id]);
       this.gun.group.rotation.x = -Math.PI / 2;
@@ -63,6 +63,8 @@ export class SurvivorActor {
     } else this.stats = FISTS;
     this.mag = this.stats.mag;
     this.melee = this.stats.def.cat === 'melee';
+    this.explosive = isExplosive(this.stats.def);
+    this.flameT = 0;
   }
 
   // ------------------------------------------------------------ health
@@ -142,6 +144,7 @@ export class SurvivorActor {
     for (const e of lvl.enemies) {
       if (!e.alive || e.type === 'angel') continue;
       if (filter && !filter(e)) continue;
+      if (this.explosive && !this.safeBlast(e)) continue;
       const d = dist2D(this.pos.x, this.pos.z, e.pos.x, e.pos.z);
       if (d > range) continue;
       if (!lvl.world.los(this.pos.x, this.pos.z, e.pos.x, e.pos.z)) continue;
@@ -153,6 +156,16 @@ export class SurvivorActor {
       }
     }
     return best;
+  }
+
+  // Never lob a blast where it would catch the player or another survivor.
+  safeBlast(e) {
+    const r = (this.stats.splash || 0) + 1.8;
+    if (!r || this.stats.def.cat === 'flame') return true;
+    const g = this.game;
+    const humans = [g.player, ...(g.level.actors || [])];
+    for (const h of humans) if (h.alive && dist2D(h.pos.x, h.pos.z, e.pos.x, e.pos.z) < r) return false;
+    return true;
   }
 
   muzzlePos() {
@@ -170,9 +183,10 @@ export class SurvivorActor {
       return;
     }
     this.cd -= dt;
-    if (this.cd > 0) return;
     const g = this.game;
     const d = dist2D(this.pos.x, this.pos.z, target.pos.x, target.pos.z);
+    if (this.explosive) return this.tryExplosive(dt, target, d);
+    if (this.cd > 0) return;
     if (this.melee) {
       if (d > s.range + target.radius) return;
       this.cd = 1 / s.rate;
@@ -196,6 +210,50 @@ export class SurvivorActor {
       this.mag--;
       if (this.mag <= 0) this.reloadT = s.reload * 1.2;
     }
+  }
+
+  // Launchers, grenades, molotovs and flamethrowers: slow and deliberate.
+  tryExplosive(dt, target, d) {
+    const g = this.game;
+    const s = this.stats;
+    const def = s.def;
+    if (def.cat === 'flame') {
+      if (this.flameT > 0) {
+        this.flameT -= dt;
+        this.flameTick -= dt;
+        if (this.flameTick <= 0) {
+          this.flameTick = 0.15;
+          const from = this.muzzlePos();
+          const dir = new THREE.Vector3(target.pos.x - from.x, 0.9 - from.y, target.pos.z - from.z).normalize();
+          g.combat.flame(this, from, dir, { range: s.range, dmg: s.dmg, spread: s.spread });
+          g.audio.weaponFire(def, this.pos);
+          this.attackAnim = 0.3;
+        }
+        return;
+      }
+      if (this.cd > 0 || this.aimT < 0.6 || d > s.range) return;
+      this.flameT = 1.2;
+      this.flameTick = 0;
+      this.cd = 1.2 + 4 + Math.random() * 1.5;
+      return;
+    }
+    if (this.cd > 0 || this.aimT < 0.6 || !this.safeBlast(target)) return;
+    // one shot every 6-8 seconds
+    this.cd = Math.max(1 / s.rate, 4.5) + 1.5 + Math.random() * 2;
+    const from = this.muzzlePos();
+    const pr = def.proj;
+    const arc = pr.grav > 0;
+    const T = arc ? clamp(d / (pr.speed * 0.8), 0.5, 3) : d / pr.speed;
+    // lead the target a little, and miss by more the worse the aim
+    const err = (1 - survivorAim(this.rec)) * d * 0.25;
+    const tx = target.pos.x + Math.sin(target.yaw) * target.speedNow * T * 0.8 + (Math.random() - 0.5) * 2 * err;
+    const tz = target.pos.z + Math.cos(target.yaw) * target.speedNow * T * 0.8 + (Math.random() - 0.5) * 2 * err;
+    const vel = arc
+      ? new THREE.Vector3((tx - from.x) / T, (0.3 - from.y + 0.5 * pr.grav * T * T) / T, (tz - from.z) / T)
+      : new THREE.Vector3(tx - from.x, 1.0 - from.y, tz - from.z).normalize().multiplyScalar(pr.speed);
+    g.combat.spawn(pr.kind, from, vel, { grav: pr.grav, dmg: s.dmg, splash: s.splash, fuse: pr.fuse || undefined, pierce: s.pierce, src: this });
+    g.audio.weaponFire(def, this.pos);
+    this.attackAnim = 1;
   }
 
   // ------------------------------------------------------------ update

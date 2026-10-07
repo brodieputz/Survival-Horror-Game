@@ -338,6 +338,12 @@ export class BuildingScene {
         e.lodAcc = 0;
       } else e.update(dt);
     }
+    this.enemies = this.enemies.filter((e) => {
+      if (!e.gone) return true;
+      e.dispose();
+      this.group.remove(e.root);
+      return false;
+    });
     this.enemyInteractions();
     for (const a of this.actors) a.update(dt);
     for (const f of this.found) f.update(dt);

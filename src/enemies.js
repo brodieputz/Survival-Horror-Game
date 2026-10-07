@@ -25,6 +25,10 @@ const VOICE = { walker: 'grunt', runner: 'grunt', grunt: 'grunt', fat: 'brute', 
 
 let seedCounter = 1;
 
+// Corpses lie for a moment, then fade out and sink away.
+const FADE_START = 6;
+const FADE_TIME = 2.5;
+
 export class Enemy {
   constructor(game, type, x, z, opts = {}) {
     this.game = game;
@@ -417,11 +421,8 @@ export class Enemy {
 
     if (this.state === 'dead') {
       this.deadT += dt;
-      if (this.mode === 'wave' && this.deadT > 14) {
-        this.root.position.y = -(this.deadT - 14) * 0.4;
-        if (this.deadT > 17) this.gone = true;
-      }
       this.syncModel(dt);
+      if (this.deadT > FADE_START) this.fadeOut(Math.min(1, (this.deadT - FADE_START) / FADE_TIME));
       return;
     }
 
@@ -917,12 +918,40 @@ export class Enemy {
     this.yaw = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
   }
 
+  fadeOut(t) {
+    if (!this.fadeMats) {
+      // give this body its own transparent copies of its materials
+      this.fadeMats = [];
+      this.root.traverse((o) => {
+        if (!o.isMesh) return;
+        const list = Array.isArray(o.material) ? o.material : [o.material];
+        const copies = list.map((m) => {
+          const c = m.clone();
+          c.transparent = true;
+          c.depthWrite = false;
+          this.fadeMats.push(c);
+          return c;
+        });
+        o.material = Array.isArray(o.material) ? copies : copies[0];
+        o.castShadow = false;
+      });
+    }
+    for (const m of this.fadeMats) m.opacity = 1 - t;
+    this.root.position.y -= t * 0.35;
+    if (t >= 1) {
+      this.root.visible = false;
+      for (const m of this.fadeMats) m.dispose();
+      this.fadeMats = [];
+      this.gone = true;
+    }
+  }
+
   // ------------------------------------------------------------ animation
   syncModel(dt) {
     const m = this.model;
     this.root.position.x = this.pos.x;
     this.root.position.z = this.pos.z;
-    if (this.state !== 'dead' || this.deadT <= 14) this.root.position.y = 0;
+    this.root.position.y = 0;
     this.root.rotation.y = this.yaw;
     if (this.type === 'angel') return;
     if (this.state === 'dead') {
@@ -932,7 +961,7 @@ export class Enemy {
       if (m.quad) this.root.rotation.z = e * 1.45;
       else if (m.crawl) this.root.rotation.z = e * 0.6;
       else this.root.rotation.x = -e * 1.45;
-      if (this.deadT <= 14) this.root.position.y = e * 0.12;
+      this.root.position.y = e * 0.12;
       m.jaw.rotation.x = 0.4;
       for (const arm of m.arms) arm.sh.rotation.x = -1.2 * e;
       return;

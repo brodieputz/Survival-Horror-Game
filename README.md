@@ -47,8 +47,9 @@ When your hours run out it's **dusk**. You get one last chance to prepare, then 
 On the first night there is a 50% chance of a wave, and the chance rises by 1% every night. If a wave comes:
 
 * Zombies cross the field and batter the barricade. Once it breaks, they come for you and your survivors.
-* You can't go beyond the barricade at night. Survivors hold positions behind it and fight with whatever you gave them. **Survivors never run out of ammo, but you do.** They can't use launchers, grenades or the flamethrower.
+* You can't go beyond the barricade at night. Survivors hold positions behind it and fight with whatever you gave them. **Survivors never run out of ammo, but you do.** With launchers, grenades, molotovs or the flamethrower they're slow and careful: one shot every 6–8 seconds, flamethrower bursts with long pauses, and they won't fire where the blast would catch you or another survivor.
 * Each wave is bigger than the last and brings tougher, faster types.
+* The dead don't pile up: bodies fade away a few seconds after they drop, in camp and in buildings.
 * Clear the wave and dawn comes. You get a report, and the run is saved.
 
 If you die at any point, the run is over.

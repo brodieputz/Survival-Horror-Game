@@ -98,9 +98,9 @@ const W = [
   { id: 'minigun', name: 'Minigun', cat: 'lmg', rarity: 'legendary', ammo: 'rifle', mag: 200, dmg: 30, rate: 30, auto: true, range: 70, spread: 0.07, reload: 6, noise: 52, spinUp: 0.55, look: { gatling: true } },
 
   // ---------------------------------------------------------------- launchers (player only)
-  { id: 'm79', name: 'M79 Grenade Launcher', cat: 'launcher', rarity: 'rare', ammo: 'grenades40', mag: 1, dmg: 180, splash: 4.5, rate: 1.2, range: 60, spread: 0.01, reload: 1.9, noise: 30, proj: { kind: 'grenade', speed: 30, grav: 14, fuse: 0 }, noSurvivor: true, look: { wood: true, tube: true } },
-  { id: 'mgl', name: 'Milkor MGL', cat: 'launcher', rarity: 'legendary', ammo: 'grenades40', mag: 6, dmg: 180, splash: 4.5, rate: 1.7, range: 60, spread: 0.012, reload: 4.5, noise: 30, proj: { kind: 'grenade', speed: 30, grav: 14, fuse: 0 }, noSurvivor: true, look: { drum: true, tube: true } },
-  { id: 'rpg', name: 'RPG-7', cat: 'launcher', rarity: 'epic', ammo: 'rockets', mag: 1, dmg: 280, splash: 5.5, rate: 0.8, range: 120, spread: 0.008, reload: 3.0, noise: 55, proj: { kind: 'rocket', speed: 45, grav: 0 }, noSurvivor: true, sound: 'rocket', look: { rpg: true } },
+  { id: 'm79', name: 'M79 Grenade Launcher', cat: 'launcher', rarity: 'rare', ammo: 'grenades40', mag: 1, dmg: 180, splash: 4.5, rate: 1.2, range: 60, spread: 0.01, reload: 1.9, noise: 30, proj: { kind: 'grenade', speed: 30, grav: 14, fuse: 0 }, look: { wood: true, tube: true } },
+  { id: 'mgl', name: 'Milkor MGL', cat: 'launcher', rarity: 'legendary', ammo: 'grenades40', mag: 6, dmg: 180, splash: 4.5, rate: 1.7, range: 60, spread: 0.012, reload: 4.5, noise: 30, proj: { kind: 'grenade', speed: 30, grav: 14, fuse: 0 }, look: { drum: true, tube: true } },
+  { id: 'rpg', name: 'RPG-7', cat: 'launcher', rarity: 'epic', ammo: 'rockets', mag: 1, dmg: 280, splash: 5.5, rate: 0.8, range: 120, spread: 0.008, reload: 3.0, noise: 55, proj: { kind: 'rocket', speed: 45, grav: 0 }, sound: 'rocket', look: { rpg: true } },
 
   // ---------------------------------------------------------------- bows
   { id: 'recurve', name: 'Recurve Bow', cat: 'bow', rarity: 'common', ammo: 'arrows', mag: 1, dmg: 72, rate: 1.1, range: 70, spread: 0.006, reload: 0.55, noise: 4, pierce: 1, proj: { kind: 'arrow', speed: 55, grav: 5 }, sound: 'bow' },
@@ -108,9 +108,9 @@ const W = [
   { id: 'crossbow', name: 'Crossbow', cat: 'bow', rarity: 'uncommon', ammo: 'arrows', mag: 1, dmg: 125, rate: 1.0, range: 85, spread: 0.003, reload: 1.6, noise: 6, pierce: 3, proj: { kind: 'arrow', speed: 80, grav: 3 }, sound: 'bow', look: { crossbow: true } },
 
   // ---------------------------------------------------------------- thrown & flame (player only)
-  { id: 'grenades', name: 'Hand Grenades', cat: 'thrown', rarity: 'uncommon', ammo: 'grenade', mag: 1, dmg: 230, splash: 5.5, rate: 1.1, range: 30, reload: 0.4, noise: 0, proj: { kind: 'frag', speed: 17, grav: 14, fuse: 2.2 }, noSurvivor: true, sound: 'throw', look: { frag: true } },
-  { id: 'molotov', name: 'Molotov Cocktails', cat: 'thrown', rarity: 'uncommon', ammo: 'molotov', mag: 1, dmg: 60, splash: 4.5, rate: 1.1, range: 28, reload: 0.4, noise: 0, proj: { kind: 'molotov', speed: 16, grav: 14, fuse: 0 }, noSurvivor: true, sound: 'throw', look: { molotov: true } },
-  { id: 'flamethrower', name: 'Flamethrower', cat: 'flame', rarity: 'legendary', ammo: 'fuel', mag: 100, dmg: 9, rate: 20, auto: true, range: 10, spread: 0.18, reload: 3.5, noise: 20, noSurvivor: true, sound: 'flame', look: { tank: true } },
+  { id: 'grenades', name: 'Hand Grenades', cat: 'thrown', rarity: 'uncommon', ammo: 'grenade', mag: 1, dmg: 230, splash: 5.5, rate: 1.1, range: 30, reload: 0.4, noise: 0, proj: { kind: 'frag', speed: 17, grav: 14, fuse: 2.2 }, sound: 'throw', look: { frag: true } },
+  { id: 'molotov', name: 'Molotov Cocktails', cat: 'thrown', rarity: 'uncommon', ammo: 'molotov', mag: 1, dmg: 60, splash: 4.5, rate: 1.1, range: 28, reload: 0.4, noise: 0, proj: { kind: 'molotov', speed: 16, grav: 14, fuse: 0 }, sound: 'throw', look: { molotov: true } },
+  { id: 'flamethrower', name: 'Flamethrower', cat: 'flame', rarity: 'legendary', ammo: 'fuel', mag: 100, dmg: 9, rate: 20, auto: true, range: 10, spread: 0.18, reload: 3.5, noise: 20, sound: 'flame', look: { tank: true } },
 ];
 
 export const WEAPONS = {};
@@ -125,6 +125,8 @@ for (const w of W) {
 export const WEAPON_LIST = W;
 
 export const isMelee = (def) => def.cat === 'melee';
+// Weapons survivors handle slowly and carefully (long cooldowns, no firing near friends).
+export const isExplosive = (def) => def.cat === 'launcher' || def.cat === 'thrown' || def.cat === 'flame';
 
 // ---------------------------------------------------------------- upgrades
 export const UPGRADES = {

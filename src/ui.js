@@ -1,7 +1,7 @@
 // DOM HUD, minimaps and the camp management panels (armory, survivors,
 // barricade, turrets, local & regional maps, reports).
 import { TILE, TRAPS, TRAP_ORDER, TURRETS, TURRET_ORDER, BARRICADE, TRAVEL_HOURS } from './config.js';
-import { WEAPONS, RARITY, RARITY_ORDER, AMMO, AMMO_ORDER, CATEGORY, UPGRADES, UPG_MAX, upgradeKeys, upgradeCost, weaponStats } from './weapons.js';
+import { WEAPONS, RARITY, RARITY_ORDER, AMMO, AMMO_ORDER, CATEGORY, UPGRADES, UPG_MAX, upgradeKeys, upgradeCost, weaponStats, isExplosive } from './weapons.js';
 import {
   BIOMES,
   LOCATION_TYPES,
@@ -434,7 +434,7 @@ export class UI {
       const def = WEAPONS[inst.id];
       const s = weaponStats(inst, run.player.level);
       const melee = def.cat === 'melee';
-      mid += `<h3 style="font-size:30px">${rname(def)}</h3><div class="muted">${RARITY[def.rarity].name} ${CATEGORY[def.cat]}${def.ammo ? ` · uses ${AMMO[def.ammo].name.toLowerCase()}` : ''}${def.noSurvivor ? ' · <span class="bad">player only</span>' : ''}</div>`;
+      mid += `<h3 style="font-size:30px">${rname(def)}</h3><div class="muted">${RARITY[def.rarity].name} ${CATEGORY[def.cat]}${def.ammo ? ` · uses ${AMMO[def.ammo].name.toLowerCase()}` : ''}${isExplosive(def) ? ' · <span class="muted">survivors use it slowly</span>' : ''}</div>`;
       mid += `<div style="margin:6px 0">`;
       mid += `<div class="stat-row"><span>Damage</span>${bar(s.dmg * s.pellets, 300)}<span>${Math.round(s.dmg)}${s.pellets > 1 ? '×' + s.pellets : ''}</span></div>`;
       mid += `<div class="stat-row"><span>${melee ? 'Swing rate' : 'Fire rate'}</span>${bar(s.rate, 20)}<span>${s.rate.toFixed(1)}/s</span></div>`;
@@ -448,7 +448,7 @@ export class UI {
       const camp = run.survivors.filter((v) => v.status === 'camp' && v.hp > 0);
       if (camp.length) {
         mid += `<div>Give to: `;
-        for (const v of camp) mid += `<button class="pbtn" data-act="give" data-id="${v.id}" ${def.noSurvivor || v.weapon === inst.uid ? 'disabled' : ''}>${esc(v.name.split(' ')[0])}</button>`;
+        for (const v of camp) mid += `<button class="pbtn" data-act="give" data-id="${v.id}" ${v.weapon === inst.uid ? 'disabled' : ''}>${esc(v.name.split(' ')[0])}</button>`;
         mid += `</div>`;
       }
       mid += `<h3 style="margin-top:10px">Workbench</h3>`;
@@ -494,8 +494,8 @@ export class UI {
     body += `<div style="margin-top:8px"><button class="pbtn big" data-act="heal" ${run.medkits <= 0 || s.hp >= max ? 'disabled' : ''}>Use a med kit (+60%) · ${run.medkits} left</button></div></div>`;
     body += `<div class="box"><h3>Weapon</h3><div style="font-size:24px">${w ? rname(WEAPONS[w.id]) : '<span class="muted">Fists</span>'}</div>`;
     if (w) body += `<button class="pbtn" data-act="stake">Take it back</button>`;
-    body += `<div class="muted" style="margin-top:8px">Survivors never run out of ammo, but can't use launchers, grenades or flamethrowers. If they die, their weapon is lost.</div>`;
-    const rack = run.weapons.filter((x) => !holderOf(run, x.uid) && !WEAPONS[x.id].noSurvivor);
+    body += `<div class="muted" style="margin-top:8px">Survivors never run out of ammo. With launchers, grenades, molotovs and flamethrowers they're slow and careful, and won't fire where the blast would catch a friend. If they die, their weapon is lost.</div>`;
+    const rack = run.weapons.filter((x) => !holderOf(run, x.uid));
     body += `<h3 style="margin-top:8px">From the rack</h3><div class="wlist" style="max-height:34vh">`;
     if (!rack.length) body += `<div class="muted">Nothing on the rack they can use.</div>`;
     for (const x of rack) body += `<button class="witem" data-act="sgive" data-uid="${x.uid}"><span>${rname(WEAPONS[x.id])}</span><small>${CATEGORY[WEAPONS[x.id].cat]}</small></button>`;

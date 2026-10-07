@@ -530,7 +530,7 @@ class Game {
       case 'give': {
         const s = survivor(ds.id);
         const inst = R.weaponByUid(run, P.sel);
-        if (!s || !inst || WEAPONS[inst.id].noSurvivor) break;
+        if (!s || !inst) break;
         R.unassign(run, inst.uid);
         s.weapon = inst.uid;
         this.afterGearChange();
