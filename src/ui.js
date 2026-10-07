@@ -290,6 +290,7 @@ export class UI {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, size, size);
     if (lvl.kind === 'camp') return this.drawCampMap(ctx, size);
+    if (lvl.kind !== 'building') return;
     const p = g.player;
     const view = 26;
     const scale = size / view;

@@ -15,11 +15,11 @@ const GradeShader = {
     tDiffuse: { value: null },
     uRes: { value: new THREE.Vector2(1, 1) },
     uTime: { value: 0 },
-    uVignette: { value: 0.32 },
+    uVignette: { value: 0.4 },
     uGrain: { value: 0.04 },
     uCA: { value: 0.006 },
     uSat: { value: 0.9 },
-    uContrast: { value: 1.07 },
+    uContrast: { value: 1.12 },
     uShadowTint: { value: new THREE.Vector3(0.0, 0.006, 0.018) },
     uHighTint: { value: new THREE.Vector3(1.02, 1.0, 0.96) },
   },
@@ -61,6 +61,48 @@ const GradeShader = {
     }`,
 };
 
+// Shafts of light: each pixel marches toward the sun's spot on screen and
+// gathers the bright sky it passes, so the light streams through gaps in
+// trees, fences and buildings (and the smoke) the way it does on film.
+const RaysShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uSun: { value: new THREE.Vector2(0.5, 0.5) },
+    uStrength: { value: 0 },
+    uColor: { value: new THREE.Color(1.0, 0.86, 0.62) },
+    uThresh: { value: 1.0 },
+  },
+  vertexShader: GradeShader.vertexShader,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec2 uSun;
+    uniform float uStrength;
+    uniform vec3 uColor;
+    uniform float uThresh;
+    varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+    void main() {
+      vec4 base = texture2D(tDiffuse, vUv);
+      if (uStrength <= 0.001) { gl_FragColor = base; return; }
+      const int N = 28;
+      vec2 delta = (uSun - vUv) * (0.9 / float(N));
+      vec2 uv = vUv + delta * hash(vUv * 731.0); // dither the march
+      float illum = 0.0;
+      float decay = 1.0;
+      for (int i = 0; i < N; i++) {
+        uv += delta;
+        vec3 s = texture2D(tDiffuse, clamp(uv, 0.0, 1.0)).rgb;
+        float l = dot(s, vec3(0.2126, 0.7152, 0.0722));
+        illum += max(0.0, l - uThresh) * decay;
+        decay *= 0.955;
+      }
+      illum /= float(N);
+      float d = length((vUv - uSun) * vec2(1.6, 1.0));
+      illum *= 1.0 / (1.0 + d * 2.2);
+      gl_FragColor = vec4(base.rgb + uColor * illum * uStrength, base.a);
+    }`,
+};
+
 export const QUALITY = {
   cinematic: { label: 'Cinematic', post: true, msaa: 4, bloom: true, ratio: 1.5 },
   balanced: { label: 'Balanced', post: true, msaa: 2, bloom: false, ratio: 1 },
@@ -91,8 +133,10 @@ export class Pipeline {
     const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: Q.msaa });
     const c = (this.composer = new EffectComposer(this.renderer, rt));
     c.addPass(new RenderPass(this.scene, this.camera));
+    this.rays = new ShaderPass(RaysShader);
+    c.addPass(this.rays);
     if (Q.bloom) {
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.45, 0.55, 1.1);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.6, 1.0);
       c.addPass(this.bloom);
     } else this.bloom = null;
     c.addPass(new OutputPass());
@@ -114,6 +158,16 @@ export class Pipeline {
       this.composer.setSize(w, h);
       this.grade.uniforms.uRes.value.set(w * pr, h * pr);
     }
+  }
+
+  // Where the sun (or moon) is on screen and how strongly it streams.
+  setRays(uv, strength, color) {
+    if (!this.rays) return;
+    const u = this.rays.uniforms;
+    if (uv) u.uSun.value.copy(uv);
+    u.uStrength.value = strength;
+    if (color) u.uColor.value.copy(color);
+    this.rays.enabled = strength > 0.001;
   }
 
   render(dt, time) {

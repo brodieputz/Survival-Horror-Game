@@ -2,11 +2,14 @@
 import * as THREE from 'three';
 import { CampScene } from './camp.js';
 import { BuildingScene } from './building.js';
+import { TravelScene } from './travel.js';
+import { CITY } from './cities.js';
 import { Player } from './player.js';
 import { AudioSys } from './audio.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
 import { Particles, Casings } from './fx.js';
+import { FlashlightBeam } from './beam.js';
 import { Combat } from './combat.js';
 import { Enemy } from './enemies.js';
 import { makeGunModel } from './gunModels.js';
@@ -24,6 +27,12 @@ import { damp, dist2D, clamp } from './util.js';
 const SETTINGS_KEY = 'dreaddepths.settings';
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const lookTmp = new THREE.Vector3();
+const raysTmp = new THREE.Vector3();
+const raysP = new THREE.Vector3();
+const raysUv = new THREE.Vector2();
+const raysC = new THREE.Color();
+const raysMoon = new THREE.Color(0x9ab0e0);
+const raysWhite = new THREE.Color(0xffffff);
 const SPAWNS = {
   tent: { x: 21.5, z: 9.5, yaw: -Math.PI / 2 },
   table: { x: 22.6, z: 31.5, yaw: -Math.PI / 2 },
@@ -74,6 +83,9 @@ class Game {
     fl.shadow.radius = 2.5;
     this.camera.add(fl);
     this.camera.add(fl.target);
+    // the beam you can see in dusty air, and the dust in it
+    this.beam = new FlashlightBeam(this.camera);
+    this.beam.attach(this.scene);
     this.torchLights = [];
     for (let i = 0; i < 4; i++) {
       const l = new THREE.PointLight(0xff7a30, 0, 12, 1.3);
@@ -111,7 +123,7 @@ class Game {
     this.dawnT = 0;
 
     this.audio.occluded = (pos) => {
-      if (!this.level || this.level.kind === 'camp') return false;
+      if (!this.level || this.level.kind !== 'building') return false;
       const c = this.camera.position;
       return !this.level.world.los(c.x, c.z, pos.x, pos.z);
     };
@@ -255,6 +267,7 @@ class Game {
 
   disposeLevel() {
     this.stopPlacing();
+    this.beam.update(0, this.camera, 0);
     if (this.cine) {
       this.cine = null;
       document.body.classList.remove('cine');
@@ -511,13 +524,36 @@ class Game {
     this.closePanel(false);
     run.hours -= TRAVEL_HOURS;
     this.audio.whistle();
+    const from = CITY[run.city];
     this.transition(
       () => {
+        // the run is at its destination from here on (a save mid-journey
+        // wakes up there), the film just shows the trip
         R.travel(run, opt);
+        R.saveRun(run);
+        this.disposeLevel();
+        new TravelScene(this, from || CITY[opt.city], CITY[opt.city], opt.miles || 0);
+        if (this.vm) this.vm.group.visible = false;
+        document.body.classList.add('cine', 'travel');
+        this.setEnvironment();
+        this.state = 'travel';
+        this.audio.setMode('safe');
+      },
+      1.6,
+      1.0
+    );
+  }
+
+  // The train pulls in: back to camp in the new city.
+  endTravel() {
+    if (this.state !== 'travel') return;
+    const run = this.run;
+    this.transition(
+      () => {
+        document.body.classList.remove('cine', 'travel');
         this.enterCamp('table');
         const lines = [{ text: `The train rolls into ${run.locality.name}.` }, { kind: 'muted', text: `${R.BIOMES[run.locality.biome].name} country. New places to search.` }];
         if (run.hours <= 0) lines.push(...this.startDusk());
-        this.ui.banner(run.locality.name.toUpperCase(), R.BIOMES[run.locality.biome].name, 3.5);
         R.saveRun(run);
         this.input.lock();
         // a wide look at the train in its new surroundings
@@ -527,11 +563,11 @@ class Game {
           to: V(50, 4.5, 50),
           lookFrom: V(16, 2.5, 26),
           lookTo: V(20, 2, 24),
-          onEnd: () => lines.forEach((l, i) => this.ui.message(l.text, l.kind || '', 5 + i)),
+          onEnd: () => lines.forEach((l, k) => this.ui.message(l.text, l.kind || '', 5 + k)),
         });
       },
-      1.8,
-      2.0
+      0.9,
+      1.6
     );
   }
 
@@ -993,8 +1029,31 @@ class Game {
     this.last = now;
     this.step(dt);
     if (this.level) this.env.update(dt);
+    this.updateRays(dt);
     this.pipeline.render(dt, this.time);
     this.input.endFrame();
+  }
+
+  // Light shafts from the sun (faintly from the moon) when it's in view.
+  updateRays(dt) {
+    const env = this.env;
+    if (!this.level || !env.out) return this.pipeline.setRays(null, 0);
+    const cam = this.camera;
+    const dir = env.lightDir;
+    const fwd = cam.getWorldDirection(raysTmp);
+    const facing = fwd.dot(dir);
+    let k = 0;
+    if (facing > 0.05) {
+      const p = raysP.copy(cam.position).addScaledVector(dir, 500).project(cam);
+      raysUv.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
+      // fade as the sun leaves the frame
+      const edge = Math.max(Math.abs(p.x), Math.abs(p.y));
+      k = clamp((facing - 0.05) / 0.45, 0, 1) * clamp(1.6 - edge * 0.6, 0, 1);
+      k *= (1 - env.indoor) * (env.night ? 0.35 : this.run?.phase === 'dusk' ? 1.4 : 1);
+    }
+    this.raysK = damp(this.raysK || 0, k, 4, dt);
+    raysC.copy(env.night ? raysMoon : env.out.sun).lerp(raysWhite, 0.25);
+    this.pipeline.setRays(raysUv, this.raysK * 0.75, raysC);
   }
 
   step(dt) {
@@ -1030,6 +1089,14 @@ class Game {
       this.particles.update(dt);
       this.casings.update(dt, 0);
       this.shriekMsgCd -= dt;
+      this.ui.update(dt);
+    } else if (s === 'travel') {
+      const lvl = this.level;
+      lvl.update(dt);
+      const input = this.input;
+      const skip = lvl.t > 1 && (input.clicked || ['Space', 'Enter', 'KeyE', 'Escape'].some((c) => input.wasPressed(c)));
+      if (lvl.done || skip) this.endTravel();
+      this.particles.update(dt);
       this.ui.update(dt);
     } else if (s === 'transition') {
       const q = this.transQ;
@@ -1281,6 +1348,9 @@ class Game {
     let weak = charge > 0.25 ? 1 : 0.35 + 2.6 * charge;
     if (charge < 0.12 && Math.random() < dt * 4) weak *= 0.2;
     this.flashlight.intensity = lit && p.flashlight ? 65 * fl * weak : 0;
+    // indoors the beam hangs visibly in the air
+    const beamK = this.flashlight.intensity > 0 ? (this.flashlight.intensity / 65) * Math.max(this.env.indoor, lvl.kind === 'camp' ? 0.25 : 0) : 0;
+    this.beam.update(dt, this.camera, beamK);
     this.flashlight.castShadow = lvl.kind === 'building';
     this.muzzle.intensity = Math.max(0, this.muzzle.intensity - dt * 160);
     this.lightT = (this.lightT || 0) - dt;

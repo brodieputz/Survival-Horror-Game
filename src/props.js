@@ -14,76 +14,19 @@ const cyl = (r0, r1, h, mat, x = 0, y = 0, z = 0, seg = 8) => {
   return m;
 };
 
-// ---------------------------------------------------------------- train
-// A flatbed / boxcar, long axis along Z. Roof deck at y = 3.1.
-export function makeTrainCar(kind = 'box') {
-  const g = new THREE.Group();
-  const rust = L({ map: tex('trainMetal') });
-  const dark = L({ color: 0x1a1816 });
-  const len = 9.2;
-  // wheels and bogies
-  for (const z of [-len / 2 + 1.6, len / 2 - 1.6])
-    for (const x of [-0.75, 0.75]) {
-      for (const dz of [-0.55, 0.55]) {
-        const w = cyl(0.42, 0.42, 0.14, dark, x, 0.42, z + dz, 10);
-        w.rotation.z = Math.PI / 2;
-        g.add(w);
-      }
-    }
-  g.add(box(2.6, 0.35, len, dark, 0, 0.95, 0)); // chassis
-  if (kind === 'box') {
-    g.add(box(2.9, 2.0, len - 0.2, rust, 0, 2.1, 0));
-    g.add(box(3.0, 0.12, len, dark, 0, 3.12, 0));
-    // sliding door
-    g.add(box(0.06, 1.7, 2.2, L({ color: 0x5a3a26 }), 1.47, 2.0, 0));
-  } else {
-    // flatbed with sandbags around the turret deck
-    g.add(box(2.9, 0.4, len, rust, 0, 1.3, 0));
-    const bag = L({ color: 0x8a7a56 });
-    for (let i = 0; i < 8; i++) g.add(box(0.7, 0.32, 0.45, bag, i % 2 ? -1.1 : 1.1, 1.66, -len / 2 + 1 + i * 1.05));
-  }
-  // couplers
-  g.add(box(0.3, 0.3, 0.6, dark, 0, 0.95, len / 2 + 0.2));
-  return mergeStatic(g);
-}
-
-export function makeLocomotive() {
-  const g = new THREE.Group();
-  const black = L({ color: 0x18181a });
-  const red = L({ color: 0x6a1a12 });
-  const brass = L({ color: 0x9a7a3a });
-  g.add(box(2.6, 0.4, 11, black, 0, 0.95, 0));
-  const boiler = cyl(1.2, 1.2, 7, black, 0, 2.4, -1.2, 12);
-  boiler.rotation.x = Math.PI / 2;
-  g.add(boiler);
-  g.add(box(2.9, 2.9, 3.0, black, 0, 2.6, 3.8)); // cab
-  g.add(box(3.0, 0.15, 3.3, red, 0, 4.1, 3.8));
-  g.add(cyl(0.35, 0.45, 1.6, black, 0, 4.1, -3.8)); // stack
-  g.add(cyl(0.4, 0.4, 0.5, brass, 0, 3.7, -1.0)); // dome
-  for (let i = 0; i < 4; i++) {
-    const w = cyl(0.75, 0.75, 0.16, red, 0, 0.75, -3.4 + i * 1.7, 12);
-    w.rotation.z = Math.PI / 2;
-    w.position.x = -1.3;
-    g.add(w);
-    const w2 = w.clone();
-    w2.position.x = 1.3;
-    g.add(w2);
-  }
-  const cow = box(2.6, 0.8, 0.8, red, 0, 0.6, -5.6);
-  cow.rotation.x = 0.6;
-  g.add(cow);
-  const lamp = glowSprite(0xffe0a0, 1.2, 0.7);
-  lamp.position.set(0, 3.2, -4.9);
-  g.add(lamp);
-  return mergeStatic(g);
-}
-
+// ---------------------------------------------------------------- track
+// Rails on sleepers on a gravel bed; the railhead is 0.26 m up.
 export function makeRails(length) {
   const g = new THREE.Group();
-  const wood = L({ color: 0x3a2a1c });
-  const steel = L({ color: 0x5a5a5e });
-  for (let z = -length / 2; z < length / 2; z += 1.2) g.add(box(2.6, 0.12, 0.3, wood, 0, 0.06, z));
-  for (const x of [-0.75, 0.75]) g.add(box(0.1, 0.14, length, steel, x, 0.18, 0));
+  g.add(box(3.8, 0.16, length, L({ map: tex('roofGravel'), color: 0x8a8478, roughness: 1 }), 0, 0.06, 0));
+  const wood = L({ map: tex('wood', 5), color: 0x5a4434, roughness: 0.95 });
+  const steel = L({ color: 0x9a9894, roughness: 0.3, metalness: 0.9 });
+  const web = L({ color: 0x3a2e26, roughness: 0.7, metalness: 0.5 });
+  for (let z = -length / 2; z < length / 2; z += 0.65) g.add(box(2.6, 0.12, 0.24, wood, 0, 0.18, z));
+  for (const x of [-0.75, 0.75]) {
+    g.add(box(0.08, 0.07, length, steel, x, 0.225, 0));
+    g.add(box(0.14, 0.04, length, web, x, 0.25, 0));
+  }
   const m = mergeStatic(g, false);
   return m;
 }

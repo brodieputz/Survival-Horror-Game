@@ -83,6 +83,7 @@
   #scope svg { position: absolute; left: 50%; top: 50%; width: 88vmin; height: 88vmin; transform: translate(-50%, -50%); }
   #scope::after { content: ''; position: absolute; left: 50%; top: 50%; width: 88vmin; height: 88vmin; transform: translate(-50%, -50%); border-radius: 50%; box-shadow: inset 0 0 6vmin 2vmin rgba(0,0,0,0.85); }
   body.scoped #scope { display: block; }
+  body.travel #hud > *:not(#banner) { display: none !important; }
   body.scoped #cross { display: none; }
   #battery { font-size: 18px; color: var(--bone-dim); letter-spacing: 1px; }
   #status { font-size: 20px; color: var(--bone-dim); margin-top: 5px; height: 20px; letter-spacing: 2px; }

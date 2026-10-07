@@ -40,7 +40,7 @@ function mixPal(a, b, f) {
 export function sunArc(s, side) {
   const a = Math.PI * s;
   const up = Math.sin(a);
-  return new THREE.Vector3(Math.cos(a), Math.max(0.02, up * 0.82), side * (0.3 + up * 0.55)).normalize();
+  return new THREE.Vector3(Math.cos(a), Math.max(0.02, up * 0.62), side * (0.3 + up * 0.55)).normalize();
 }
 
 export class Environment {
@@ -86,7 +86,8 @@ export class Environment {
     const run = g.run;
     const lvl = g.level;
     if (!run || !lvl) return;
-    const b = BIOMES[run.locality.biome];
+    const biome = lvl.biomeKey || run.locality.biome;
+    const b = BIOMES[biome];
     const T = b.tod;
     const side = lvl.kind === 'camp' ? -1 : 1;
     let pal;
@@ -128,7 +129,7 @@ export class Environment {
       stars: night ? 1 : 0,
     });
     this.sky.uniforms.uMoonDir.value.copy(moonDir);
-    const key = [run.locality.biome, run.phase, Math.round(s * 12), lvl.kind].join(':');
+    const key = [biome, run.phase, Math.round(s * 12), lvl.kind].join(':');
     if (key !== this.key) {
       this.key = key;
       this.bake();

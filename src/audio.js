@@ -613,6 +613,25 @@ export class AudioSys {
         break;
     }
   }
+  // a locomotive's exhaust chuff
+  chug(vol = 1) {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(null, vol * 0.5, { reverb: 0.35 });
+    this.noise(t, 0.16, o, { type: 'lowpass', freq: 700, Q: 0.8, gain: 0.35, f1: 260 });
+    this.noise(t, 0.08, o, { freq: 2400, Q: 1, gain: 0.06 });
+  }
+  // wheels over a rail joint
+  clack() {
+    if (!this.ok()) return;
+    const t = this.now;
+    const o = this.out(null, 0.35, { reverb: 0.2 });
+    for (const dt of [0, 0.09]) {
+      this.osc('square', 120, t + dt, 0.05, o, { gain: 0.08, f1: 60 });
+      this.noise(t + dt, 0.04, o, { freq: 1800, Q: 2, gain: 0.12 });
+    }
+  }
+
   // brass bouncing on the floor
   casing(pos) {
     if (!this.ok()) return;

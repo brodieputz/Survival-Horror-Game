@@ -1114,6 +1114,61 @@ const builders = {
     speckle(ctx, 32, 64, rng, 0.3);
     return toTex(c);
   },
+  // a boxcar's side: steel ribs over weathered paint, a stencilled reporting mark
+  boxcar(seed = 111) {
+    const rng = new RNG(seed);
+    const c = canvas(128, 64);
+    const ctx = c.getContext('2d');
+    const base = [
+      [118, 52, 34],
+      [96, 70, 48],
+      [62, 66, 58],
+    ][seed % 3];
+    ctx.fillStyle = shade(base, 1);
+    ctx.fillRect(0, 0, 128, 64);
+    // vertical sheets with ribs
+    for (let x = 0; x < 128; x += 16) {
+      ctx.fillStyle = shade(base, 0.62);
+      ctx.fillRect(x, 0, 3, 64);
+      ctx.fillStyle = shade(base, 1.18);
+      ctx.fillRect(x + 3, 0, 1, 64);
+      ctx.fillStyle = '#2a1a12';
+      for (let y = 4; y < 64; y += 8) ctx.fillRect(x + 1, y, 1, 1);
+    }
+    ctx.fillStyle = shade(base, 0.7);
+    ctx.fillRect(0, 0, 128, 3);
+    ctx.fillRect(0, 61, 128, 3);
+    ctx.fillStyle = 'rgba(230,224,200,0.75)';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText(['DD&W', 'B&O', 'UP', 'ATSF', 'CB&Q'][seed % 5], 8, 20);
+    ctx.font = 'bold 7px sans-serif';
+    ctx.fillText(String(4000 + ((seed * 37) % 5000)), 8, 30);
+    ctx.font = '5px sans-serif';
+    ctx.fillText('CAPY 100000  LD LMT 128500', 8, 54);
+    speckle(ctx, 128, 64, rng, 0.3);
+    grime(ctx, 128, 64, rng, 30, '#3a2010');
+    grime(ctx, 128, 64, rng, 12, '#141010');
+    drips(ctx, 128, 64, rng, 4);
+    return toTex(c);
+  },
+  coal(seed = 112) {
+    const rng = new RNG(seed);
+    const c = canvas(64, 64);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0c0c0e';
+    ctx.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 220; i++) {
+      const v = rng.int(12, 46);
+      ctx.fillStyle = `rgb(${v},${v},${v + 4})`;
+      const r = rng.range(1, 3.5);
+      ctx.beginPath();
+      ctx.arc(rng.range(0, 64), rng.range(0, 64), r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(160,170,190,0.25)';
+      ctx.fillRect(rng.range(0, 64), rng.range(0, 64), 1, 1);
+    }
+    return toTex(c);
+  },
   trainMetal(seed = 37) {
     const rng = new RNG(seed);
     const c = canvas(64, 32);

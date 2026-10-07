@@ -16,6 +16,7 @@ import { TILE, T, TURRETS, TRAPS } from './config.js';
 import { tex } from './textures.js';
 import * as M from './models.js';
 import * as P from './props.js';
+import { makeLocomotive, makeTender, makeTrainCar } from './train.js';
 import { BIOMES, barricadeMax } from './run.js';
 import { macroVary, makeGrass, Smoke, WIND } from './atmos.js';
 
@@ -174,17 +175,23 @@ export class CampScene {
     rails.position.set(TRAIN_X, 0, 25);
     this.group.add(rails);
     this.carModels = [];
+    // the train sits on the rails (railhead 0.26 m up)
+    const RY = 0.26;
     CAR_Z.forEach((z, i) => {
-      const car = P.makeTrainCar(i % 2 ? 'box' : 'flat');
-      car.position.set(TRAIN_X, 0, z);
+      const car = M.mergeStatic(makeTrainCar(i % 2 ? 'box' : 'flat', i));
+      car.position.set(TRAIN_X, RY, z);
       this.group.add(car);
       this.world.addCollider(TRAIN_X - 1.5, z - 4.7, TRAIN_X + 1.5, z + 4.7);
-      this.carModels.push({ z, roof: i % 2 ? 3.18 : 1.5 });
+      this.carModels.push({ z, roof: (i % 2 ? 3.2 : 1.45) + RY });
     });
-    const loco = P.makeLocomotive();
-    loco.position.set(TRAIN_X, 0, 60);
+    const tender = M.mergeStatic(makeTender());
+    tender.position.set(TRAIN_X, RY, 53.4);
+    tender.rotation.y = Math.PI;
+    this.group.add(tender);
+    const loco = makeLocomotive();
+    loco.position.set(TRAIN_X, RY, 62.5);
     loco.rotation.y = Math.PI;
-    this.group.add(loco);
+    this.group.add(M.mergeStatic(loco));
     this.world.addCollider(TRAIN_X - 1.5, 48.4, TRAIN_X + 1.5, 70);
     for (let y = 0; y < CH; y++) for (let x = 2; x <= 3; x++) this.d.blocked[y * CW + x] = 1;
   }
