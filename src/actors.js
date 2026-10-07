@@ -151,6 +151,24 @@ export function makeZombie(type, rng) {
         m.armored = true;
       }
       break;
+    case 'spitter':
+      // gaunt, with a swollen bile sac at the throat and a split jaw
+      m = humanoid({ skin: 0x7a8a5a, shirt: pick(ZCLOTH), pants: pick(ZCLOTH), build: 0.85, lean: 0.35, eyes: 0xb0ff30, eyeR: 0.017, sleeves: false, shirtless: true, fleshSeed: 19 });
+      {
+        const sacM = L({ color: 0x9ab83a, emissive: 0x2a3a08, roughness: 0.3 });
+        const sac = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), sacM);
+        sac.scale.set(1.15, 0.85, 1);
+        sac.position.set(0, -0.12, 0.08);
+        sac.castShadow = true;
+        m.head.add(sac);
+        for (let i = 0; i < 3; i++) m.torso.add(block(0.06, 0.06, 0.02, sacM, (rng() - 0.5) * 0.22, 0.2 + rng() * 0.25, 0.13));
+        m.spit = sac;
+      }
+      break;
+    case 'lurker':
+      // pale and thin, lying among the dead until you come close
+      m = humanoid({ skin: 0xa8a29a, shirt: pick(ZCLOTH), pants: pick(ZCLOTH), build: 0.9, lean: 0.4, eyes: 0xffffff, eyeR: 0.014, sleeves: false, fleshSeed: 12, hair: rng() < 0.5 ? 0x1a1410 : null, longHair: rng() < 0.5 });
+      break;
     case 'crawler':
       m = humanoid({ skin: pick(ZSKIN), shirt: pick(ZCLOTH), pants: pick(ZCLOTH), build: 0.95, lean: 1.45, hipY: 0.26, eyes: 0xff3010, noLegs: true, fleshSeed: 18 });
       m.hips.add(block(0.26, 0.1, 0.2, L({ color: 0x5a0a0a }), 0, -0.04, 0));

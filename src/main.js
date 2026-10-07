@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CampScene } from './camp.js';
 import { BuildingScene } from './building.js';
 import { TravelScene } from './travel.js';
+import { rollRailEvent, resolveRailEvent, defaultChoice } from './railevents.js';
 import { CITY } from './cities.js';
 import { Player } from './player.js';
 import { AudioSys } from './audio.js';
@@ -19,7 +20,7 @@ import { Pipeline, QUALITY } from './render.js';
 import { setAnisotropy } from './textures.js';
 import { makeBearTrap } from './models.js';
 import { makeMine, makeTripSpikes, makeKeroseneTank } from './props.js';
-import { DAY_HOURS, TRAVEL_HOURS, BARRICADE, TURRETS, TRAPS, TRAP_ORDER } from './config.js';
+import { TRAVEL_HOURS, BARRICADE, TURRETS, TRAPS, TRAP_ORDER } from './config.js';
 import { WEAPONS, upgradeCost, UPG_MAX } from './weapons.js';
 import * as R from './run.js';
 import { damp, dist2D, clamp } from './util.js';
@@ -327,7 +328,10 @@ class Game {
     this.transition(
       () => {
         this.combat.clear();
+        const followers = lvl.takeFollowers();
         lvl.setFloor(to);
+        lvl.queueFollowers(followers, to);
+        lvl.lastStairDir = dir;
         const p = this.player;
         const sp = lvl.d.stairs.spot;
         p.spawn(sp);
@@ -441,7 +445,8 @@ class Game {
           p.flashlight = true;
           this.setEnvironment();
           this.nightReport = { lines, quiet: false };
-          this.ui.banner(`NIGHT ${run.day}`, 'Something is coming across the field...', 4);
+          if (comp.bloodMoon) this.ui.banner('BLOOD MOON', `Night ${run.day}. The moon has risen red, and all of them are coming.`, 4.5);
+          else this.ui.banner(`NIGHT ${run.day}`, 'Something is coming across the field...', 4);
           this.audio.horn();
           this.audio.setMode('chase');
           this.input.lock();
@@ -486,14 +491,39 @@ class Game {
           if (b.hp <= 0) lines.push({ kind: 'bad', text: 'The barricade is in ruins. Rebuild it with scrap.' });
           else if (b.hp < R.barricadeMax(run)) lines.push({ text: `The barricade is at ${Math.ceil(b.hp)} / ${R.barricadeMax(run)}.` });
         }
+        // the stove burns through a cold night, or everyone suffers
+        if (R.coldNight(run)) {
+          if (run.coal > 0) {
+            run.coal--;
+            lines.push({ kind: 'muted', text: 'A bitter night. The stove burned 1 coal.' });
+          } else {
+            lines.push({ kind: 'bad', text: 'A bitter night with no coal for the stove. Everyone is weaker from the cold.' });
+            run.player.hp = Math.max(1, run.player.hp - R.playerMaxHp(run.player.level) * 0.15);
+            for (const s of run.survivors) if (s.status !== 'dead') s.hp = Math.max(1, s.hp - R.survivorMaxHp(s) * 0.15);
+          }
+        }
+        const season0 = R.season(run);
         run.day++;
-        run.hours = DAY_HOURS;
+        run.hours = R.dayHours(run);
         run.phase = 'day';
+        const se = R.season(run);
+        let rebuild = false;
+        if (se !== season0) {
+          const S = R.SEASONS[se];
+          lines.push({ kind: 'gold', text: `${S.icon} ${S.name} has come. ${S.note}` });
+        }
+        const nb = R.seasonalBiome(CITY[run.city] || { biome: run.locality.biome, lat: 0, lon: 0 }, se);
+        if (CITY[run.city] && nb !== run.locality.biome) {
+          lines.push({ kind: 'muted', text: nb === 'tundra' ? 'Snow fell in the night. The land is white.' : 'The snow has melted away.' });
+          run.locality.biome = nb;
+          rebuild = true;
+        }
         const meal = R.dailyRations(run);
         lines.push(...meal.lines);
-        camp.clearNight();
-        camp.spawnSurvivors();
-        camp.setGate(true);
+        if (rebuild) this.enterCamp('tent');
+        else camp.clearNight();
+        this.level.spawnSurvivors();
+        this.level.setGate(true);
         this.combat.clear();
         const p = this.player;
         p.resetTransient();
@@ -501,14 +531,16 @@ class Game {
         this.setEnvironment();
         this.audio.setMode('safe');
         this.audio.dawn();
-        lines.push({ kind: 'gold', text: `Tonight's chance of an attack: ${Math.round(R.waveChance(run) * 100)}%.` });
+        if (R.bloodMoon(run)) lines.push({ kind: 'bad', text: 'Tonight the moon rises red. The dead will come, and in greater numbers.' });
+        else lines.push({ kind: 'gold', text: `Tonight's chance of an attack: ${Math.round(R.waveChance(run) * 100)}%.` });
         this.nightReport = null;
         if (meal.playerDied) {
           setTimeout(() => this.playerDied('starvation'), 300);
           return;
         }
         R.saveRun(run);
-        this.ui.banner(`DAY ${run.day}`, `${run.locality.name}`, 3);
+        const cal = R.calendar(run);
+        this.ui.banner(`DAY ${run.day}`, `${run.locality.name} · ${cal.month} ${cal.date}`, 3);
         this.openPanel('report', lines, `DAWN — DAY ${run.day}`);
       },
       1.0,
@@ -529,10 +561,12 @@ class Game {
       () => {
         // the run is at its destination from here on (a save mid-journey
         // wakes up there), the film just shows the trip
+        const ev = rollRailEvent(run, opt);
         R.travel(run, opt);
         R.saveRun(run);
         this.disposeLevel();
-        new TravelScene(this, from || CITY[opt.city], CITY[opt.city], opt.miles || 0);
+        this.railEvent = ev;
+        new TravelScene(this, from || CITY[opt.city], CITY[opt.city], opt.miles || 0, ev);
         if (this.vm) this.vm.group.visible = false;
         document.body.classList.add('cine', 'travel');
         this.setEnvironment();
@@ -553,6 +587,9 @@ class Game {
         document.body.classList.remove('cine', 'travel');
         this.enterCamp('table');
         const lines = [{ text: `The train rolls into ${run.locality.name}.` }, { kind: 'muted', text: `${R.BIOMES[run.locality.biome].name} country. New places to search.` }];
+        const ev = this.railEvent;
+        if (ev?.result) for (const l of ev.result) if (l.kind === 'bad' || l.kind === 'gold' || l.kind === 'good') lines.push(l);
+        this.railEvent = null;
         if (run.hours <= 0) lines.push(...this.startDusk());
         R.saveRun(run);
         this.input.lock();
@@ -632,6 +669,17 @@ class Game {
 
   closePanel(relock = true) {
     const was = this.ui.panel;
+    // leaving a stop on the line: settle it and steam on
+    if (was?.kind === 'railevent' && this.level?.kind === 'travel') {
+      const ev = was.arg;
+      if (!ev.result) resolveRailEvent(this.run, ev, defaultChoice(ev));
+      this.ui.closePanel();
+      this.state = 'travel';
+      this.input.pressed.clear();
+      this.level.resume();
+      R.saveRun(this.run);
+      return;
+    }
     this.ui.closePanel();
     if (this.state === 'panel') this.state = 'playing';
     this.input.pressed.clear();
@@ -807,6 +855,13 @@ class Game {
       case 'sleepyes':
         this.sleep();
         return;
+      case 'railpick': {
+        const ev = P.arg;
+        if (ev.result) break;
+        resolveRailEvent(run, ev, +ds.i);
+        this.audio.uiClick();
+        break;
+      }
       case 'wait':
         this.passTime(ds.h === 'dusk' ? this.run.hours : +ds.h);
         return;
@@ -968,7 +1023,7 @@ class Game {
       setTimeout(() => {
         if (this.level !== lvl || this.state === 'gameover') return;
         if (lvl.kind === 'camp' && lvl.wave?.active) lvl.spawnZombie('crawler', x + 0.4, z, e.mul);
-        else if (lvl.kind === 'building') lvl.enemies.push(new Enemy(this, 'crawler', x, z, { group: lvl.group }));
+        else if (lvl.kind === 'building') lvl.enemies.push(new Enemy(this, 'crawler', x, z, { group: lvl.fgroup }));
       }, 900);
     }
   }
@@ -1094,8 +1149,8 @@ class Game {
       const lvl = this.level;
       lvl.update(dt);
       const input = this.input;
-      const skip = lvl.t > 1 && (input.clicked || ['Space', 'Enter', 'KeyE', 'Escape'].some((c) => input.wasPressed(c)));
-      if (lvl.done || skip) this.endTravel();
+      const skip = lvl.t > 1 && lvl.resumeT <= 0 && (input.clicked || ['Space', 'Enter', 'KeyE', 'Escape'].some((c) => input.wasPressed(c)));
+      if (lvl.done || (skip && lvl.skip())) this.endTravel();
       this.particles.update(dt);
       this.ui.update(dt);
     } else if (s === 'transition') {
@@ -1172,6 +1227,9 @@ class Game {
         break;
       case 'gate':
         this.level.useGate(best.obj);
+        break;
+      case 'boards':
+        this.level.pryBoards();
         break;
       case 'tent':
         this.requestSleep();

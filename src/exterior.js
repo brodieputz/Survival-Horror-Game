@@ -9,6 +9,7 @@ import { tex } from './textures.js';
 import { box, lambert as L, mergeStatic, makeDoorFrame, glowSprite } from './models.js';
 import * as P from './props.js';
 import * as LP from './lotprops.js';
+import { makeTrainCar } from './train.js';
 import { macroVary, makeGrass } from './atmos.js';
 
 const DOOR_TOP = 3.0;
@@ -23,7 +24,75 @@ export const EXTERIOR = {
   hospital: { floors: 4, story: 3.6, roof: 'flat', facade: 'facadeHospital', ground: 'facadeHospital', seed: 72, fence: 'hedge', trim: 0x8a9294 },
   military: { floors: 1, story: 4.6, roof: 'flat', facade: 'facadeBunker', ground: 'facadeBunker', seed: 81, fence: 'barbed', trim: 0x4a4a3a },
   skyscraper: { floors: 18, story: 3.8, roof: 'flat', facade: 'facadeTower', ground: 'facadeGlass', seed: 90, glass: true, fence: 'planter', trim: 0x3a3e44 },
+  stadium: { floors: 1, story: 11, roof: 'open', facade: 'facadeConcrete', ground: 'facadeConcrete', seed: 93, fence: 'chain', trim: 0x8a8e90 },
+  railyard: { floors: 1, story: 7.5, roof: 'lowslope', facade: 'facadeBrick', ground: 'facadeBrick', seed: 96, fence: 'chain', trim: 0x4a2a20 },
+  mall: { floors: 2, story: 5, roof: 'flat', facade: 'facadeShop', ground: 'facadeGlass', seed: 99, glass: true, fence: 'planter', trim: 0x8a7a6a },
+  grain: { floors: 1, story: 7, roof: 'lowslope', facade: 'facadeMetal', ground: 'facadeMetal', seed: 102, fence: 'chain', trim: 0x8a8a80 },
+  mine: { floors: 1, story: 6, roof: 'pitched', facade: 'facadeMetal', ground: 'facadeMetal', seed: 105, fence: 'barbed', trim: 0x3a3430 },
 };
+
+// ---------------------------------------------------------------- landmark lot props
+function makeRails(len) {
+  const g = new THREE.Group();
+  const steel = L({ color: 0x5a5450, roughness: 0.45, metalness: 0.8 });
+  const wood = L({ map: tex('wood', 5), color: 0x6a5a48, roughness: 0.95 });
+  g.add(LP.makeGroundPatch('dirt', 3.4, len, 1, { y: 0.012 }));
+  for (const s of [-1, 1]) g.add(box(0.08, 0.16, len, steel, s * 0.72, 0.2, 0));
+  for (let z = -len / 2 + 0.3; z < len / 2; z += 0.65) g.add(box(2.4, 0.12, 0.24, wood, 0, 0.06, z));
+  return mergeStatic(g);
+}
+function makeLightTower(h = 16) {
+  const g = new THREE.Group();
+  const steel = L({ color: 0x6a6e70, roughness: 0.5, metalness: 0.7 });
+  g.add(box(0.45, h, 0.45, steel, 0, h / 2, 0));
+  g.add(box(3.2, 1.6, 0.35, steel, 0, h + 0.6, 0));
+  const lens = L({ color: 0xd8dcc8, emissive: 0x2a2a20, roughness: 0.2 });
+  for (let i = 0; i < 6; i++) g.add(box(0.42, 0.42, 0.08, lens, -1.2 + (i % 3) * 1.2, h + 0.25 + Math.floor(i / 3) * 0.7, 0.2));
+  return g;
+}
+function makeSilo(r, h) {
+  const g = new THREE.Group();
+  const metal = L({ map: tex('sheetMetal', 25), color: 0xc8c8c0, roughness: 0.55, metalness: 0.5 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), metal);
+  body.position.y = h / 2;
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 1.04, r * 0.7, 20), metal);
+  cap.position.y = h + r * 0.35;
+  for (const m of [body, cap]) {
+    m.castShadow = true;
+    m.receiveShadow = true;
+  }
+  g.add(body, cap);
+  for (let y = 2; y < h; y += 2.4) g.add(new THREE.Mesh(new THREE.TorusGeometry(r + 0.02, 0.04, 4, 24), L({ color: 0x7a7a74, metalness: 0.6 })).rotateX(Math.PI / 2).translateZ(-y));
+  return g;
+}
+function makeHeadframe(h = 16) {
+  const g = new THREE.Group();
+  const steel = L({ color: 0x4a3a30, roughness: 0.7, metalness: 0.5 });
+  const w = 4;
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const leg = box(0.3, h, 0.3, steel, (x * w) / 2 * 0.6, h / 2, (z * w) / 2 * 0.6);
+    leg.rotation.z = -x * 0.06;
+    leg.rotation.x = z * 0.06;
+    g.add(leg);
+  }
+  for (let y = 2.5; y < h; y += 3) {
+    const k = 1 - (y / h) * 0.35;
+    for (const z of [-1, 1]) g.add(box(w * k, 0.18, 0.18, steel, 0, y, (z * w * k) / 2 * 0.6));
+    for (const x of [-1, 1]) g.add(box(0.18, 0.18, w * k, steel, (x * w * k) / 2 * 0.6, y, 0));
+  }
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.12, 6, 20), steel);
+  wheel.position.set(0, h + 0.6, 0);
+  wheel.castShadow = true;
+  g.add(wheel, box(0.3, 0.3, 2.6, steel, 0, h + 0.6, 0));
+  return g;
+}
+function makeCoalPile(r, h) {
+  const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 14), L({ map: tex('coal'), color: 0x3a3836, roughness: 0.95 }));
+  m.position.y = h / 2;
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
 
 // ---------------------------------------------------------------- geometry helpers
 class Quads {
@@ -152,7 +221,41 @@ export function buildExterior(scene) {
   const roofQ = new Quads();
   let roofMat;
   const OV = 0.5;
-  if (S.roof === 'flat') {
+  if (S.roof === 'open') {
+    // a stadium: tiers of seats step up from the top of the field walls to
+    // the rim, all the way round, with floodlights on the corners
+    roofMat = L({ map: tex('roofGravel'), roughness: 1 });
+    const conc = L({ map: tex('concreteSlab'), color: 0x9a9894, roughness: 0.9 });
+    const seatCols = [0x1a3a7a, 0x8a1a1a];
+    const seat = L({ color: seatCols[Math.floor(rng() * 2)], roughness: 0.6 });
+    const sg = new THREE.Group();
+    const steps = 6;
+    const rise = (HB - WALL_H) / steps;
+    const sides = [
+      [SX0, SZ0, SX0, F, 1, 0],
+      [SX1, SZ0, SX1, F, -1, 0],
+      [SX0, SZ0, SX1, SZ0, 0, 1],
+      [SX0, F, SX1, F, 0, -1],
+    ];
+    for (const [x0, z0, x1, z1, nx, nz] of sides) {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      for (let k = 0; k < steps; k++) {
+        const deep = steps - k + 0.6;
+        const y = WALL_H + k * rise;
+        const cx = (x0 + x1) / 2 + (nx * deep) / 2;
+        const cz = (z0 + z1) / 2 + (nz * deep) / 2;
+        const w = nx ? deep : len;
+        const dz = nx ? len : deep;
+        sg.add(box(w, rise, dz, conc, cx, y + rise / 2, cz));
+        // a row of seats along the tread
+        const sx = (x0 + x1) / 2 + nx * (deep - 0.45);
+        const sz = (z0 + z1) / 2 + nz * (deep - 0.45);
+        sg.add(box(nx ? 0.5 : len - 2, 0.45, nx ? len - 2 : 0.5, seat, sx, y + rise + 0.22, sz));
+      }
+    }
+    for (const [x, z] of [[SX0 + 1, SZ0 + 1], [SX1 - 1, SZ0 + 1], [SX0 + 1, F - 1], [SX1 - 1, F - 1]]) sg.add(makeLightTower(9).translateX(x).translateY(HB).translateZ(z));
+    group.add(mergeStatic(sg));
+  } else if (S.roof === 'flat') {
     roofMat = L({ map: tex('roofGravel'), roughness: 1 });
     roofQ.quad([SX0, HB, F], [SX1, HB, F], [SX1, HB, SZ0], [SX0, HB, SZ0], [0, 0, (SX1 - SX0) / 4, (F - SZ0) / 4]);
     // parapet and cornice
@@ -498,6 +601,87 @@ export function buildExterior(scene) {
       const fx = DX - wide * 4.5;
       if (fx > LX0 + 1 && fx < LX1 - 1) solid(LP.makeFlagpole(), fx, F + 1.2, 0.3, 0.3);
       sign(`${L_name} · RESTRICTED AREA`, 9, 0.9, DX, 3.9, F + 0.1, { bg: '#2a2c22', fg: '#e8e0c0', font: 'bold 60px sans-serif' });
+      break;
+    }
+  }
+  switch (type) {
+    case 'stadium': {
+      sidewalk(3);
+      parking(wide, F + 7, ['sedan', 'suv', 'van', 'pickup'], 0.5);
+      parking(-wide, F + 7, ['sedan', 'suv', 'van'], 0.4);
+      parking(wide, LZ1 - 4, ['sedan', 'suv'], 0.3);
+      for (const side of [-1, 1]) {
+        const [a, b] = zone(side);
+        if (b - a > 2) solid(makeLightTower(), side < 0 ? a + 0.6 : b - 0.6, F + 3.2, 0.5, 0.5);
+      }
+      for (let k = 0; k < 4; k++) {
+        const jx = DX + (k < 2 ? -1 : 1) * (3.6 + (k % 2) * 3.2);
+        if (jx > LX0 + 1.5 && jx < LX1 - 1.5) solid(LP.makeJersey(3), jx, LZ1 - 6, 3, 0.6);
+      }
+      sign(L_name, Math.min(22, (SX1 - SX0) * 0.7), 2.2, DX, HB - 2.2, F + 0.12, { bg: '#1a2a4a', fg: '#f0e8d0', font: 'bold 80px sans-serif', lit: true });
+      sign('QUARANTINE ZONE · NO ENTRY', 7, 0.7, DX, 3.6, F + 0.12, { bg: '#e8e0c8', fg: '#a01810', font: 'bold 56px sans-serif' });
+      break;
+    }
+    case 'railyard': {
+      const [a, b] = zone(wide);
+      const len = LZ1 - F - 2;
+      for (let t = 0; t < 2; t++) {
+        const tx = wide > 0 ? b - 2 - t * 4.2 : a + 2 + t * 4.2;
+        if (Math.abs(tx - DX) < 4.5 || tx < LX0 + 1.5 || tx > LX1 - 1.5) continue;
+        deco(makeRails(len), tx, F + 1 + len / 2);
+        if (t === 0 || rng() < 0.6) {
+          const car = mergeStatic(makeTrainCar(rng() < 0.7 ? 'box' : 'flat', Math.floor(rng() * 9)));
+          solid(car, tx, F + 1 + len / 2 + (rng() - 0.5) * 4, 3, 9.4);
+        }
+      }
+      const [c0, c1] = zone(-wide);
+      if (c1 - c0 > 4) {
+        solid(makeCoalPile(2.6, 2.4), (c0 + c1) / 2, F + 6, 4.4, 4.4);
+        solid(LP.makeDumpster(0x3a3a2a), (c0 + c1) / 2, LZ1 - 3, 2, 1.2);
+      }
+      sign(L_name, Math.min(14, (SX1 - SX0) * 0.55), 1.2, DX, HB - 1.2, F + 0.1, { bg: '#2a1a14', fg: '#e8d8b0', font: 'bold 70px serif' });
+      break;
+    }
+    case 'mall': {
+      sidewalk(3.2);
+      parking(wide, F + 7, ['sedan', 'suv', 'van', 'pickup'], 0.55);
+      parking(-wide, F + 7, ['sedan', 'suv', 'pickup'], 0.5);
+      parking(wide, LZ1 - 4.5, ['sedan', 'suv'], 0.35);
+      parking(-wide, LZ1 - 4.5, ['sedan', 'van'], 0.3);
+      lamps(F + 11.5);
+      group.add(box(10, 0.3, 4, L({ color: 0x8a7a6a, roughness: 0.5 }), DX, 4.4, F + 2)); // entrance canopy
+      sign(L_name, Math.min(18, (SX1 - SX0) * 0.6), 1.6, DX, HB - 1.6, F + 0.12, { bg: '#f0ece0', fg: '#7a1a40', font: 'bold 84px serif', lit: true });
+      const px = DX + wide * Math.min(12, (LX1 - LX0) / 2 - 2);
+      if (px > LX0 + 1 && px < LX1 - 1) solid(LP.makePoleSign(L_name, ['OPEN 10–9', 'FOOD COURT'], 8), px, LZ1 - 1.4, 0.6, 0.6);
+      break;
+    }
+    case 'grain': {
+      const [a, b] = zone(wide);
+      const n = Math.min(3, Math.floor((b - a) / 5.8));
+      for (let i = 0; i < n; i++) solid(makeSilo(2.5, 15 + rng() * 5), wide > 0 ? b - 2.8 - i * 5.8 : a + 2.8 + i * 5.8, F + 4.5, 5, 5);
+      const [c0, c1] = zone(-wide);
+      if (c1 - c0 > 4) {
+        const tr = LP.makeVehicle('pickup', rng);
+        solid(tr.mesh, (c0 + c1) / 2, F + 8, tr.w, tr.len, Math.PI + 0.3);
+        solid(LP.makeTrailer(), (c0 + c1) / 2, LZ1 - 8, 2.6, 12.5);
+      }
+      sign(L_name, Math.min(14, (SX1 - SX0) * 0.6), 1.3, DX, HB - 1.3, F + 0.1, { bg: '#7a2a1a', fg: '#f0e0c0', font: 'bold 70px serif' });
+      break;
+    }
+    case 'mine': {
+      const [a, b] = zone(wide);
+      if (b - a > 5) solid(makeHeadframe(14 + rng() * 4), (a + b) / 2, F + 6, 3.4, 3.4);
+      const [c0, c1] = zone(-wide);
+      if (c1 - c0 > 5) {
+        solid(makeCoalPile(3.2, 3.2), (c0 + c1) / 2, F + 5.5, 5.4, 5.4);
+        if (LZ1 - F > 16) solid(makeCoalPile(2.4, 2.2), (c0 + c1) / 2 + (rng() - 0.5) * 2, LZ1 - 5, 4, 4);
+      }
+      const cart = new THREE.Group();
+      cart.add(box(1.2, 0.8, 1.8, L({ color: 0x4a3a30, roughness: 0.7, metalness: 0.5 }), 0, 0.7, 0));
+      cart.add(box(1.0, 0.3, 1.6, L({ map: tex('coal'), roughness: 0.95 }), 0, 1.15, 0));
+      const cx2 = DX + wide * 4.6;
+      if (cx2 > LX0 + 1.5 && cx2 < LX1 - 1.5) solid(cart, cx2, LZ1 - 3, 1.2, 1.8, 0.2);
+      sign(L_name, Math.min(12, (SX1 - SX0) * 0.6), 1.1, DX, HB - 1.0, F + 0.1, { bg: '#1a1612', fg: '#e8c070', font: 'bold 70px serif' });
       break;
     }
   }

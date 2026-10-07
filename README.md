@@ -37,9 +37,40 @@ Each destination still comes with an appraisal, for example *"Likely to have sur
 
 Moving on takes 4 hours of daylight and plays a short film of the trip: the train steaming across open country, smoke rolling back off the stack, the rods driving the wheels and telegraph poles whipping past, while the land changes from the climate you left to the one you're heading for. Any key skips it.
 
+### Trouble on the line
+
+On most journeys (more often on long ones) something is waiting on the tracks. The train brakes to a stop partway through the film and you decide what to do. Every choice costs something: hours of daylight, coal, scrap, food, ammunition or blood. The outcome is applied at once and listed again when you pull in.
+
+| Event | Choices |
+| --- | --- |
+| **Wreckage on the line** | Clear it by hand (2 hours, scrap from the wreck, something may bite), or ram it at full steam (1 coal, the cowcatcher may buckle). |
+| **The dead on the tracks** | Fight them off from the cars (ammo and scratches, XP for everyone), or ram through (1 coal). |
+| **Someone waving** | Stop and take them aboard (a new survivor, or raiders using bait), or keep going. |
+| **A hot box** | Repair the bearing (5 scrap), or limp on at walking pace (3 hours). |
+| **An abandoned freight train** | Search the boxcars (1 hour: coal, food, scrap, maybe ammo, maybe a corpse in the dark), or leave it. |
+| **The bridge is out** | Take the branch line (2 coal), or creep across what's left. |
+| **A dog on the line** | Stop and coax it aboard with food, or keep going. |
+| **Frozen points** (winter) | Thaw the switch with burning coal, or chip the ice by hand in the cold. |
+| **A camp by the line** | Trade scrap for food or food for coal, or move on. |
+
+If you close the panel without choosing, you take the free option.
+
+## Seasons
+
+A run starts in early spring, and the calendar moves on four days with every day you survive. The HUD shows the date and the season.
+
+| Season | Daylight | What changes |
+| --- | --- | --- |
+| **Spring** | 12 hours | Rain and mud. |
+| **Summer** | 14 hours | Long days, but the hordes are a quarter bigger and a little faster. The northern snows have thawed. |
+| **Autumn** | 11 hours | Harvest time: farm country has far more food. |
+| **Winter** | 10 hours | Snow falls across the north and the mountains, and the land turns white. Food is scarcer, the dead are slower and the hordes a little smaller, but the nights are bitter: where there is snow, the stove burns **1 coal every night**. With no coal, everyone wakes up weaker from the cold. |
+
+When the season turns, the dawn report says so; when snow falls or melts, the camp changes with it.
+
 ## A day
 
-You have **12 hours of daylight**. Only scavenging and moving the train use hours. Everything you do in camp is free:
+You have **10 to 14 hours of daylight**, depending on the season. Only scavenging and moving the train use hours. Everything you do in camp is free:
 
 * **Map table: local map.** This shows the places around you, each with a danger rating, a search cost in hours, its number of floors and its likely loot. Locked vaults you know about and keys you've heard of are marked.
   * **Search it yourself.** You arrive on the street outside a building that looks like what it is (a house with a driveway, an office with a parking lot, a gas station with pumps, a skyscraper with a plaza and a fountain...). Leave by walking back to the signpost where you came in.
@@ -63,6 +94,26 @@ Every room has a purpose, and it looks it: living rooms with sofas, TVs, bookshe
 
 Buildings keep the original hazards: spike pits where the floor gave way, bear traps, tripwires across corridors, broken glass, and wardrobes, lockers and beds to hide in or under. The dead path around the furniture.
 
+### Landmarks
+
+Some cities have landmarks, which are bigger, richer and more dangerous than anywhere else in town. They are marked in gold on the local map:
+
+* **Stadium** (big cities): an open-air field turned into a quarantine camp, with field-hospital beds, supply pallets and mess tables under the stands, and concession stands and locker rooms underneath. It holds lots of food, medicine and survivors, and a horde.
+* **Shopping mall** (bigger cities): two floors of stores (groceries, sporting goods with gun racks, clothing and hardware) around an atrium, with a food court upstairs. Batteries, weapons and food.
+* **Rail yard** (railroad, industrial and port towns): engine sheds full of coal, spare parts and turret blueprints, with boxcars on sidings outside.
+* **Grain co-op** (farm country): sacks of grain and feed under the silos, which hold enough food for weeks.
+* **Coal mine** (coal country): a pithead with a headframe and coal heaps outside. It holds coal by the ton, and blasting powder.
+
+### What's waiting inside
+
+As well as the dead wandering the halls:
+
+* **Boarded-up rooms.** Some doorways are nailed shut with *DEAD INSIDE* painted across the planks. Get close or make noise and whatever is shut inside starts battering the boards until they splinter. You can also pry them off yourself (**E**, loudly) and be ready when the dead come out.
+* **Nests.** A pulsing mound of flesh that keeps disgorging crawlers, walkers and runners while you're near. Shoot it, burn it or blow it up to stop it; there's usually scrap and food in the remains.
+* **Lurkers** lie still in pools of blood among the bones, looking like any other corpse, until someone walks within a few steps.
+* **Spitters** keep their distance and lob globs of bile that burn on impact and leave a pool of acid on the floor. Keep moving.
+* **Nothing is safe on the stairs.** Zombies hunting you follow you up or down to the next floor, arriving a few seconds behind you depending on how far back they were.
+
 ### Batteries
 
 The flashlight runs on batteries, about four minutes each. A weak one dims and stutters. When it goes flat a spare goes in automatically; with none left, the light dies and you're in the dark. Batteries lie around on shelves, desks and floors, and turn up in containers. The HUD shows the charge and your spares.
@@ -81,11 +132,13 @@ Food is scavenged like everything else: kitchens, fridges, gas station shelves a
 
 ## A night
 
-On the first night there is a 50% chance of a wave, and the chance rises by 1% every night. If a wave comes:
+On the first night there is a 55% chance of a wave, and the chance rises by 1.5% every night. **Every seventh night is a blood moon**: the night turns red, a wave is certain, and it is 60% bigger with tougher zombies. If a wave comes:
 
 * Zombies cross the field and batter the barricade. Once it breaks, they come for you and your survivors.
 * You can't go beyond the barricade at night. Survivors hold positions behind it and fight with whatever you gave them. **Survivors never run out of ammo, but you do.** With launchers, grenades, molotovs or the flamethrower they're slow and careful: one shot every 6–8 seconds, flamethrower bursts with long pauses, and they won't fire where the blast would catch you or another survivor.
-* Waves start big and grow fast. Every wave is larger than the last, its zombies hit harder and move faster, and tougher types join sooner: runners from the first night, blood hounds and bloaters from the second, rotters from the third, riot zombies from the fourth and brutes from the fifth. A dangerous city sends bigger waves.
+* Waves start big and grow fast. Every wave is larger than the last, its zombies are tougher, hit harder and move faster, and tougher types join sooner: runners from the first night, blood hounds and bloaters from the second, rotters and spitters from the third, riot zombies from the fourth and brutes from the fifth. A dangerous city sends bigger waves, and so does summer.
+* From the second wave on, the horde comes in **surges**: every few dozen zombies, a mass of them rushes the barricade along several lanes at once, in a frenzy.
+* **Spitters** stop short of the barricade and lob bile over it at whoever is defending it.
 * The dead don't pile up: bodies fade away a few seconds after they drop, in camp and in buildings.
 * Clear the wave and dawn comes. You get a report, and the run is saved.
 
@@ -132,6 +185,8 @@ You only find ammunition for weapons you own. Ammo found for a type you have no 
 
 ## The dead
 
+Anything hunting you in a building follows you up and down the stairs.
+
 | Zombie | Where | Behaviour |
 | --- | --- | --- |
 | **Walker** | everywhere | Slow and common. |
@@ -141,6 +196,8 @@ You only find ammunition for weapons you own. Ammo found for a type you have no 
 | **Riot Zombie** | wave 4+, police and military | Armour halves body shots. Aim for the head. |
 | **Crawler** | after explosions | Explosions sometimes leave half a zombie still crawling. |
 | **Blood Hound** | wave 2+, buildings | Its shriek whips the horde into a frenzy. In buildings it calls the others, and hiding won't fool it. |
+| **Spitter** | wave 3+, buildings | Keeps its distance and lobs bile that burns and leaves an acid pool. At the camp it hangs back and spits over the barricade. |
+| **Lurker** | buildings | Lies among the dead like a corpse and springs up when you come close. |
 | **Blind Brute** | wave 5+, dangerous buildings | Hunts by sound and smashes barricades. Shoot it and it charges. |
 
 Everyone, living or dead, is built to the same human scale as you: about 1.8 m tall.
@@ -173,15 +230,16 @@ The sun sits low, so shadows are long. Walking into a building, the daylight fad
 * Everything is procedural: there are no image or sound files. Textures are painted on canvases, and the music and sound effects are synthesised with the Web Audio API.
 * The run state is plain JSON (`src/run.js`) and is saved to `localStorage` each morning, whenever you're back in camp by day, and on arrival in a new city.
 * Source layout:
-  * `src/run.js`: the run state, survivors and dogs, XP, cities and their locations with pre-rolled loot, keys and vaults, waves, the regional map, save/load
+  * `src/run.js`: the run state, survivors and dogs, XP, the calendar and seasons, cities and their locations (landmarks included) with pre-rolled loot, keys and vaults, waves and the blood moon, the regional map, save/load
   * `src/cities.js`: the cities (positions, metro populations, climates, industries), distances, and the outline of the lower 48 and the Great Lakes for the map
   * `src/weapons.js`: the weapon catalog, ammo, rarity, upgrades and loot rolls
   * `src/camp.js`: the camp scene (layout, barricade, flow field for the horde, traps, turrets, waves, weather, skyline)
   * `src/dungeon.js`: building floor plans (rooms, corridors, stairs, vaults), room purposes and furnishing, and placements for everything inside
-  * `src/building.js`: runs a building floor by floor (stairs, windows, pickups, the vault gate)
+  * `src/building.js`: runs a building floor by floor (stairs and the dead that follow you on them, windows, pickups, the vault gate, boarded rooms, nests)
   * `src/furniture.js`: furniture and clutter models
   * `src/exterior.js` and `src/lotprops.js`: each building's facade, roof and signage, its street-front lot, and the street outside
   * `src/train.js` and `src/travel.js`: the locomotive, tender and cars, and the film of the trip between cities
+  * `src/railevents.js`: the events on the line between cities and their outcomes
   * `src/env.js`, `src/sky.js`, `src/render.js`, `src/atmos.js` and `src/beam.js`: lighting and time of day, the sky dome, the post-processing pipeline (light shafts, bloom, grade), grass and smoke, and the flashlight beam and dust
   * `src/enemies.js`: zombie AI (roaming in buildings, wave mode in camp)
   * `src/survivors.js`: survivor and dog NPCs (camp, defend, follow)

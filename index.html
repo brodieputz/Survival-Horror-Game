@@ -248,6 +248,9 @@
   .loc.done { opacity: 0.45; background: #a89878; }
   .loc.claim { background: #d0e0b0; }
   .loc .lbl { position: absolute; top: 38px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 15px; color: #2a1a0a; background: rgba(232,216,176,0.8); padding: 0 3px; }
+  .loc.landmark { width: 46px; height: 46px; font-size: 26px; border: 3px solid #b8860b; background: #f4e2a8; box-shadow: 0 0 10px rgba(232,180,40,0.6); }
+  .loc.landmark .lbl { top: 46px; font-weight: bold; color: #5a3a00; }
+  .loc.landmark.sel { border-color: #b3150f; }
   .camp-dot { position: absolute; transform: translate(-50%, -50%); font-size: 26px; color: #6a1a10; }
   .cols2.regional { grid-template-columns: 1fr; }
   .mapwrap.us { aspect-ratio: 16 / 9; width: min(100%, 100vh); margin: auto; background: #7d8f8c; }
@@ -269,6 +272,9 @@
   .chip { pointer-events: auto; display: inline-block; border: 1px solid #5a3a20; padding: 1px 8px; margin: 2px; cursor: pointer; font-size: 18px; }
   .chip.on { border-color: #6fd05a; color: #b6e08a; }
   .report div { font-size: 22px; margin: 3px 0; }
+  .rail-text { font-size: 22px; line-height: 1.35; margin: 4px 0 14px; }
+  .rail-opts { display: flex; flex-direction: column; gap: 6px; }
+  .rail-opt { text-align: left; width: 100%; }
   .turret-opt { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border-bottom: 1px solid #2a1a10; padding: 6px 0; }
   @media (max-width: 900px) { .cols, .cols2 { grid-template-columns: 1fr; } }
 </style>

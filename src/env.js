@@ -5,8 +5,7 @@
 // and exposure adapts more slowly, the way eyes do.
 import * as THREE from 'three';
 import { Sky } from './sky.js';
-import { BIOMES } from './run.js';
-import { DAY_HOURS } from './config.js';
+import { BIOMES, dayHours, bloodMoon } from './run.js';
 import { clamp, damp, lerp } from './util.js';
 
 const INDOOR = {
@@ -99,7 +98,17 @@ export class Environment {
       // a search takes hours; light it as it looks halfway through
       const hours = lvl.kind === 'building' ? run.hours + lvl.loc.hours * 0.5 : run.hours;
       pal = mixPal(palette(T.day), palette(T.dusk), clamp((4 - hours) / 4, 0, 1) * 0.8);
-      s = 0.1 + 0.82 * clamp(1 - hours / DAY_HOURS, 0, 1);
+      s = 0.1 + 0.82 * clamp(1 - hours / dayHours(run), 0, 1);
+    }
+    // a blood moon stains the night red
+    const red = night && lvl.kind === 'camp' && bloodMoon(run);
+    if (red) {
+      const R = C(0x5a0c08);
+      pal.zen.lerp(C(0x1a0204), 0.6);
+      pal.sky.lerp(R, 0.45);
+      pal.fog.lerp(R, 0.4);
+      pal.hemiS.lerp(C(0x8a2018), 0.55);
+      pal.sun.lerp(C(0xff3a20), 0.7);
     }
     const sunDir = sunArc(s, side);
     const moonDir = new THREE.Vector3(-0.35, 0.72, 0.42 * side).normalize();
@@ -129,7 +138,8 @@ export class Environment {
       stars: night ? 1 : 0,
     });
     this.sky.uniforms.uMoonDir.value.copy(moonDir);
-    const key = [biome, run.phase, Math.round(s * 12), lvl.kind].join(':');
+    this.sky.uniforms.uMoonCol.value.setRGB(...(red ? [1.6, 0.32, 0.22] : [0.82, 0.86, 0.95]));
+    const key = [biome, run.phase, Math.round(s * 12), lvl.kind, red].join(':');
     if (key !== this.key) {
       this.key = key;
       this.bake();

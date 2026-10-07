@@ -30,6 +30,11 @@ const PLAN = {
   hospital: { w: [9, 12], h: [7, 8], style: 'corridor', room: [2, 4], lobby: 4 },
   military: { w: [8, 11], h: [6, 7], style: 'corridor', room: [3, 4], lobby: 3 },
   skyscraper: { w: [8, 10], h: [7, 8], style: 'corridor', room: [2, 4], lobby: 5 },
+  stadium: { w: [11, 13], h: [8, 9], style: 'hall', hall: 'arena', openHall: true },
+  railyard: { w: [10, 12], h: [7, 8], style: 'hall', hall: 'trainShed' },
+  mall: { w: [10, 12], h: [7, 8], style: 'corridor', room: [2, 4], lobby: 4 },
+  grain: { w: [8, 10], h: [6, 7], style: 'hall', hall: 'grainFloor' },
+  mine: { w: [8, 10], h: [6, 8], style: 'hall', hall: 'minehead' },
 };
 
 // ---------------------------------------------------------------- room purposes
@@ -324,6 +329,107 @@ const PURPOSE = {
     hide: ['locker'],
     deco: 0,
   },
+  // ---- landmarks ----
+  // the stadium field, turned into a quarantine camp
+  arena: {
+    floor: ['grass:3'],
+    wall: ['concrete:23'],
+    items: [['waitingChairs', 1, 3], ['barrels', 0.6], ['palletStack', 0.8], ['waitingChairs', 0.8, 2]],
+    mid: [['hospitalBed', 1, 4], ['curtain', 0.8, 2], ['messTable', 0.8, 2], ['palletStack', 0.6, 2], ['clutter', 0.7]],
+    cont: ['crate', 'medcab', 'crate', 'footlocker'],
+    hide: ['locker'],
+    deco: 0,
+  },
+  concession: {
+    floor: ['tile:20'],
+    wall: ['bathTile:102', 'plaster:101'],
+    items: [['counter', 1], ['drinkCooler', 1], ['counter', 0.7], ['trashCan', 0.6]],
+    mid: [['clutter', 0.5]],
+    cont: ['fridge', 'shelf', 'cabinet'],
+    hide: [],
+    deco: 1,
+  },
+  trainShed: {
+    floor: ['concrete:23'],
+    wall: ['brick:3', 'sheetMetal:25'],
+    items: [['barrels', 1], ['palletStack', 1], ['barrels', 0.8], ['lockerRow', 0.5]],
+    mid: [['palletRack', 1, 4], ['forklift', 0.7], ['palletStack', 0.8, 2], ['clutter', 0.6]],
+    cont: ['crate', 'toolbox', 'crate', 'shelf'],
+    hide: ['locker'],
+    deco: 0,
+  },
+  grainFloor: {
+    floor: ['concrete:23'],
+    wall: ['sheetMetal:25', 'wood:5'],
+    items: [['palletStack', 1], ['palletStack', 1], ['barrels', 0.7]],
+    mid: [['palletStack', 1, 4], ['forklift', 0.5], ['clutter', 0.5]],
+    cont: ['crate', 'crate', 'shelf', 'toolbox'],
+    hide: ['locker'],
+    deco: 0,
+  },
+  minehead: {
+    floor: ['dirt:4'],
+    wall: ['stoneBlocks:6', 'wood:5'],
+    items: [['barrels', 1], ['palletStack', 0.8], ['lockerRow', 0.7], ['barrels', 0.6]],
+    mid: [['palletRack', 0.8, 3], ['forklift', 0.4], ['clutter', 0.7]],
+    cont: ['crate', 'toolbox', 'crate', 'footlocker'],
+    hide: ['locker'],
+    deco: 0,
+  },
+  atrium: {
+    floor: ['terrazzo:9'],
+    wall: ['plaster:101', 'tile:20'],
+    items: [['plant', 1], ['waitingChairs', 0.8], ['plant', 0.7], ['trashCan', 0.6]],
+    mid: [['waitingChairs', 0.6], ['plant', 0.5], ['clutter', 0.5]],
+    cont: [],
+    hide: [],
+    deco: 2,
+  },
+  storeGrocery: {
+    floor: ['linoleum:21'],
+    wall: ['plaster:107'],
+    items: [['drinkCooler', 1], ['drinkCooler', 0.8], ['counter', 0.5]],
+    mid: [['gondola', 1, 3], ['checkout', 0.8], ['clutter', 0.6]],
+    cont: ['shelf', 'shelf', 'fridge'],
+    hide: [],
+    deco: 2,
+  },
+  storeSports: {
+    floor: ['linoleum:21', 'carpet:25'],
+    wall: ['plaster:104'],
+    items: [['gunRack', 1], ['lockerRow', 0.6], ['gunRack', 0.5]],
+    mid: [['gondola', 1, 2], ['checkout', 0.7], ['clutter', 0.4]],
+    cont: ['gunlocker', 'shelf', 'crate'],
+    hide: ['locker'],
+    deco: 1,
+  },
+  storeClothes: {
+    floor: ['carpet:24', 'woodFloor:7'],
+    wall: [...PAPER],
+    items: [['wardrobe', 1], ['dresser', 0.6], ['plant', 0.4]],
+    mid: [['gondola', 0.8, 2], ['rug', 0.6], ['checkout', 0.6]],
+    cont: ['shelf', 'cabinet'],
+    hide: ['closet'],
+    deco: 1,
+  },
+  storeHardware: {
+    floor: ['concrete:23', 'linoleum:21'],
+    wall: ['plaster:104'],
+    items: [['palletStack', 0.8], ['barrels', 0.6], ['lockerRow', 0.4]],
+    mid: [['gondola', 1, 3], ['checkout', 0.7], ['clutter', 0.5]],
+    cont: ['toolbox', 'shelf', 'crate'],
+    hide: [],
+    deco: 1,
+  },
+  foodcourt: {
+    floor: ['terrazzo:9', 'tile:20'],
+    wall: ['plaster:101', 'bathTile:102'],
+    items: [['counter', 1], ['stove', 0.8], ['counter', 0.8], ['drinkCooler', 0.6], ['trashCan', 0.6]],
+    mid: [['kitchenTable', 1, 3], ['clutter', 0.6]],
+    cont: ['fridge', 'cabinet'],
+    hide: [],
+    deco: 2,
+  },
   stairs: { floor: ['concrete:23'], wall: ['plaster:104', 'concrete:23'], items: [], mid: [], cont: [], hide: [], deco: 0 },
   vault: { floor: ['concrete:23'], wall: ['concrete:23'], items: [['gunRack', 0.5], ['barrels', 0.3]], mid: [], cont: [], hide: [], deco: 0 },
 };
@@ -343,7 +449,7 @@ function pickWeighted(rng, w) {
 
 export function enemyRoster(loc, rng, roomCount, scale = 1, brutesHere = true) {
   const d = loc.difficulty;
-  const count = Math.max(2, Math.round((2 + d * 2.2 + roomCount * 0.3) * scale));
+  const count = Math.max(2, Math.round((2 + d * 2.2 + roomCount * 0.3) * scale * (LOCATION_TYPES[loc.type]?.horde || 1)));
   const lawful = loc.type === 'police' || loc.type === 'military';
   const w = {
     walker: 3,
@@ -353,6 +459,8 @@ export function enemyRoster(loc, rng, roomCount, scale = 1, brutesHere = true) {
     fat: d >= 3 ? 0.7 : 0,
     armored: lawful ? (d >= 3 ? 1.6 : 0.6) : d >= 4 ? 0.4 : 0,
     rotter: d >= 4 ? 0.6 : 0,
+    spitter: d >= 2 ? 0.3 + 0.15 * d : 0,
+    lurker: 0.4 + 0.15 * d,
   };
   const out = [];
   for (let i = 0; i < count; i++) out.push(pickWeighted(rng, w));
@@ -629,6 +737,26 @@ function makeFloor(S, f) {
     }
   }
 
+  // ---------- a boarded-up room with the dead shut inside ----------
+  let boarded = null;
+  if (rng.chance(Math.min(0.7, 0.18 + 0.1 * loc.difficulty) / Math.sqrt(nF))) {
+    const cands = real.filter((r) => !r.stairs && !r.vault && !r.corridor && !r.lobby && !r.entry && !r.hub && degree(r) === 1 && r.area >= 2 && r.area <= 9);
+    for (const v of rng.shuffle(cands)) {
+      const dd = doors.find((q) => q.a === v.id || q.b === v.id);
+      if (!dd) continue;
+      v.boarded = true;
+      setEdge(dd.x, dd.y, dd.dx, dd.dy, EDGE.GATE);
+      const inA = roomOf[idx(dd.x, dd.y)] === v.id;
+      const ox = inA ? dd.x + dd.dx : dd.x;
+      const oy = inA ? dd.y + dd.dy : dd.y;
+      const into = inA ? [-dd.dx, -dd.dy] : [dd.dx, dd.dy];
+      const ex = (ox + 0.5) * TILE + (into[0] * TILE) / 2;
+      const ez = (oy + 0.5) * TILE + (into[1] * TILE) / 2;
+      boarded = { room: v.id, tx: ox, ty: oy, dx: into[0], dy: into[1], x: ex, z: ez, angle: Math.atan2(into[0], into[1]), edge: { x: dd.x, y: dd.y, dx: dd.dx, dy: dd.dy } };
+      break;
+    }
+  }
+
   // ---------- finishes ----------
   const roomStyle = {};
   for (const r of real) {
@@ -670,10 +798,15 @@ function makeFloor(S, f) {
     windows: [],
     pickups: [],
     gate,
+    boarded,
+    nest: null,
     stairs: st ? { ...st, up: f < nF - 1, down: f > 0, room: stairRoom.id } : null,
     skipFloor: new Set(),
   };
   if (st) for (let y = st.y0; y < st.y0 + st.h; y++) for (let x = st.x0; x < st.x0 + st.w; x++) out.skipFloor.add(idx(x, y));
+  // rooms open to the sky (a stadium's field)
+  out.sky = new Set();
+  for (const r of real) if (r.open) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) out.sky.add(idx(x, y));
   const center = (x, y) => ({ x: (x + 0.5) * TILE, z: (y + 0.5) * TILE });
   const roomTiles = (r) => {
     const o = [];
@@ -697,6 +830,34 @@ function makeFloor(S, f) {
       const t = tiles[idx(tx, ty)];
       if (t === T.ROCK || (st && out.skipFloor.has(idx(tx, ty)) && !(tx === st.landing.x && ty === st.landing.y))) solid[cy * GW + cx] = 1;
     }
+  // the strip along a wall is as good as solid for a body 0.3 m wide (the
+  // monsters' nav grid sees it that way too)
+  {
+    const reach = 0.12 + 0.3;
+    const post = (TILE - DOOR_W) / 2 + 0.3;
+    for (let cy = 0; cy < GH; cy++)
+      for (let cx = 0; cx < GW; cx++) {
+        if (solid[cy * GW + cx]) continue;
+        const [tx, ty] = cellTile(cx, cy);
+        const lx = (cx + 0.5) * R - tx * TILE;
+        const lz = (cy + 0.5) * R - ty * TILE;
+        for (const [dx, dy, dist, along] of [
+          [-1, 0, lx, lz],
+          [1, 0, TILE - lx, lz],
+          [0, -1, lz, lx],
+          [0, 1, TILE - lz, lx],
+        ]) {
+          if (dist >= reach) continue;
+          const nt = tiles[idx(tx + dx, ty + dy)];
+          if (nt === T.ROCK) {
+            if (dist < 0.3) solid[cy * GW + cx] = 1;
+            continue;
+          }
+          const e = getEdge(tx, ty, dx, dy);
+          if (e === EDGE.WALL || ((e === EDGE.DOOR || e === EDGE.GATE) && (along < post || along > TILE - post))) solid[cy * GW + cx] = 1;
+        }
+      }
+  }
   const cellOf = (x, z) => [Math.floor(x / R), Math.floor(z / R)];
   // stepping between cells across a tile edge (a locked gate counts as
   // open: the vault behind it must be usable once it's unlocked)
@@ -743,6 +904,7 @@ function makeFloor(S, f) {
     keepClear.push({ x0: c.x - 1.4, z0: c.z - 0.2, x1: c.x + 1.4, z1: c.z + TILE / 2 });
   }
   if (gate) keepClear.push({ x0: gate.x - 1.3, z0: gate.z - 1.3, x1: gate.x + 1.3, z1: gate.z + 1.3 });
+  if (boarded) keepClear.push({ x0: boarded.x - 1.3, z0: boarded.z - 1.3, x1: boarded.x + 1.3, z1: boarded.z + 1.3 });
   if (st) {
     const c = center(st.landing.x, st.landing.y);
     keepClear.push({ x0: c.x - 1.5, z0: c.z - 1.5, x1: c.x + 1.5, z1: c.z + 1.5 });
@@ -803,16 +965,27 @@ function makeFloor(S, f) {
         q[qt++] = c - GW;
       }
     }
-    for (const c of tmp) occ[c] = 0;
     for (const [x, z] of mustReach) {
       const [cx, cy] = cellOf(x, z);
       // the cell itself may be marked; accept a reachable neighbour
       let ok = false;
       for (const [dx, dy] of [[0, 0], ...DIRS4]) if (seen[(cy + dy) * GW + cx + dx] === stamp) ok = true;
-      if (!ok) return false;
+      if (!ok) {
+        for (const c of tmp) occ[c] = 0;
+        return false;
+      }
     }
+    // and no piece may wall off a pocket of floor (a corner of a room you
+    // could only reach by climbing over the furniture)
+    let cut = 0;
+    for (let c = 0; c < GW * GH; c++) if (!solid[c] && !occ[c] && seen[c] !== stamp) cut++;
+    for (const c of tmp) occ[c] = 0;
+    if (pocket < 0) pocket = cut;
+    if (cut > pocket + 3) return false;
+    pocket = Math.max(pocket, cut);
     return true;
   }
+  let pocket = -1;
 
   // wall slots: a tile's side that is solid wall (or a thin wall)
   function slotsOf(r) {
@@ -949,7 +1122,7 @@ function makeFloor(S, f) {
   // the vault's boxes
   if (gate) {
     const v = rooms[gate.room];
-    const kinds = { police: 'gunlocker', military: 'gunlocker', hospital: 'medcab', office: 'cabinet', skyscraper: 'cabinet' }[loc.type] || 'crate';
+    const kinds = { police: 'gunlocker', military: 'gunlocker', hospital: 'medcab', office: 'cabinet', skyscraper: 'cabinet', mall: 'gunlocker' }[loc.type] || 'crate';
     loc.lock.boxes.forEach((_, k) => {
       const kind = k === 0 ? kinds : rng.pick([kinds, 'crate', 'footlocker']);
       const p = wallPiece(v, kind, CONTAINER_WIDTH[kind], CONTAINER_DEPTH[kind], { tall: true }) || wallPiece(v, 'footlocker', CONTAINER_WIDTH.footlocker, CONTAINER_DEPTH.footlocker);
@@ -1086,7 +1259,7 @@ function makeFloor(S, f) {
       s.used |= 8;
       const c = center(s.x, s.y);
       const off = s.face - 0.02;
-      const wide = loc.type === 'skyscraper' || loc.type === 'office';
+      const wide = loc.type === 'skyscraper' || loc.type === 'office' || loc.type === 'mall';
       out.windows.push({ x: c.x + s.dx * off, z: c.z + s.dy * off, angle: Math.atan2(-s.dx, -s.dy), w: wide ? 2.5 : 1.3, h: wide ? 2.1 : 1.4, boarded: rng.chance(0.28), lowSill: !!(s.used & 1) });
     }
   }
@@ -1137,7 +1310,7 @@ function makeFloor(S, f) {
     }
     return null;
   };
-  const usable = real.filter((r) => !r.stairs && !r.vault);
+  const usable = real.filter((r) => !r.stairs && !r.vault && !r.boarded);
   const farRooms = usable
     .map((r) => ({ r, d: doorDist[idx(Math.round(r.cx), Math.round(r.cy))] }))
     .sort((a, b) => b.d - a.d)
@@ -1254,7 +1427,7 @@ function makeFloor(S, f) {
     }
     let changed = false;
     for (const r of real) {
-      if (r.vault || r.stairs) continue;
+      if (r.vault || r.stairs || r.boarded) continue;
       // every open tile of the room must be reachable, or the room's
       // furniture stops counting as walls for the monsters
       let stranded = false;
@@ -1290,6 +1463,34 @@ function makeFloor(S, f) {
     taken2.push(chosen);
     const c = center(chosen[0], chosen[1]);
     out.enemies.push({ type, x: c.x + rng.range(-0.7, 0.7), z: c.z + rng.range(-0.7, 0.7) });
+    // a lurker lies in a pool of blood among the bones
+    if (type === 'lurker') {
+      const e = out.enemies[out.enemies.length - 1];
+      out.decor.push({ kind: 'blood', x: e.x, z: e.z, rot: rng.range(0, Math.PI * 2), s: 1.4 });
+      out.decor.push({ kind: rng.pick(['bones', 'skull']), x: e.x + rng.range(-1, 1), z: e.z + rng.range(-1, 1), rot: rng.range(0, Math.PI * 2), s: 1 });
+    }
+  }
+  // the dead shut in behind the boards
+  if (boarded) {
+    const r = rooms[boarded.room];
+    const tilesIn = roomTiles(r).filter(([x, y]) => tiles[idx(x, y)] === T.FLOOR && !out.skipFloor.has(idx(x, y)));
+    const n = Math.min(tilesIn.length * 2, 2 + rng.int(0, 1 + Math.floor(d / 2)));
+    for (let k = 0; k < n; k++) {
+      const [x, y] = rng.pick(tilesIn);
+      const c = center(x, y);
+      out.enemies.push({ type: pickWeighted(rng, { walker: 3, grunt: 1.5, runner: 1, rotter: d >= 3 ? 0.6 : 0 }), x: c.x + rng.range(-0.6, 0.6), z: c.z + rng.range(-0.6, 0.6), trapped: true });
+    }
+  }
+  // a nest: a mound of flesh the dead crawl out of until it's destroyed
+  if (d >= 2 && rng.chance(Math.min(0.6, 0.15 + 0.08 * d) / Math.sqrt(nF))) {
+    const rs = rng.shuffle(usable.filter((r) => !r.corridor && !r.entry && r.area >= 4));
+    for (const r of rs) {
+      const p = freeSpot(r, 4);
+      if (!p) continue;
+      out.nest = { x: p.x, z: p.z, room: r.id, hp: 260 + 50 * d };
+      out.decor.push({ kind: 'blood', x: p.x, z: p.z, rot: 0, s: 2.6 });
+      break;
+    }
   }
 
   // ---------- outline, lot, the way in and out ----------
@@ -1467,7 +1668,7 @@ function planHall(S, rng, addRoom) {
       x += w;
     }
   }
-  addRoom(fp.x0, fp.y0, fp.w, fp.h - fh, { hub: true, want: 'warehouseHall' });
+  addRoom(fp.x0, fp.y0, fp.w, fp.h - fh, { hub: true, want: S.P.hall || 'warehouseHall', open: !!S.P.openHall });
 }
 
 // ---------------------------------------------------------------- purposes
@@ -1571,6 +1772,27 @@ function assignPurposes(S, f, rng, rooms, doors) {
       for (const r of free()) set(r, rng.pick(['barracks', 'storage', 'command', 'barracks']));
       break;
     }
+    case 'stadium': {
+      const left = free();
+      if (left[0]) set(left[0], 'concession');
+      if (left[1]) set(left[1], 'lockerroom');
+      if (left[2]) set(left[2], 'exam');
+      for (const r of free()) set(r, rng.pick(['concession', 'office', 'storage']));
+      break;
+    }
+    case 'mall': {
+      lobbies.forEach((r) => set(r, 'atrium'));
+      const big = bySize(free());
+      if (big[0] && f === nF - 1) set(big[0], 'foodcourt');
+      const rest = free();
+      if (rest[0]) set(smallest(rest), 'restroom');
+      const stores = ['storeGrocery', 'storeSports', 'storeClothes', 'storeHardware'];
+      free().forEach((r, i) => set(r, i < stores.length ? stores[(i + f * 2) % stores.length] : rng.pick(stores)));
+      break;
+    }
+    case 'railyard':
+    case 'grain':
+    case 'mine':
     case 'warehouse': {
       const left = free();
       if (left[0]) set(left[0], 'breakroom');

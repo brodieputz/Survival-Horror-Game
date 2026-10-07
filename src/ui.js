@@ -15,11 +15,16 @@ import {
   holderOf,
   expeditionChance,
   waveChance,
+  calendar,
+  season,
+  SEASONS,
+  bloodMoon,
   mouthsToFeed,
   appraisal,
   TAG_NAMES,
   DOG_BITE,
 } from './run.js';
+import { RAIL_EVENTS, canAfford } from './railevents.js';
 import { CITIES, CITY, US_OUTLINE, LAKES, MAP_ASPECT, project, SIZE_NAMES, citySize } from './cities.js';
 
 // Where a city sits on the regional map canvas (and, as fractions, on the
@@ -53,6 +58,10 @@ const DEATH_TEXT = {
   crawler: 'Something crawled out of the dark and bit.',
   hound: 'Mauled by a Blood Hound.',
   brute: 'Crushed by the Blind Brute.',
+  spitter: 'Dissolved by a Spitter\'s bile.',
+  acid: 'Dissolved by a Spitter\'s bile.',
+  lurker: 'Something lying among the bodies was not dead.',
+  cold: 'Froze in the night.',
   spikes: 'Impaled on rusted spikes.',
   beartrap: 'Bled out in the jaws of a trap.',
   explosion: 'Caught in your own blast.',
@@ -162,7 +171,7 @@ export class UI {
       pc = '';
     } else if (run.phase === 'night') {
       pc = 'night';
-      phase = lvl.wave?.active ? `NIGHT ${run.day} · WAVE ${lvl.wave.wave}` : `NIGHT ${run.day}`;
+      phase = lvl.wave?.active ? `${lvl.wave.bloodMoon ? 'BLOOD MOON' : 'NIGHT'} ${run.day} · WAVE ${lvl.wave.wave}` : `NIGHT ${run.day}`;
     } else if (run.phase === 'dusk') {
       pc = 'dusk';
       phase = 'Dusk — sleep in your tent when ready';
@@ -170,7 +179,10 @@ export class UI {
     this.set('phase', this.el.phaseLine, phase);
     this.set('phasec', this.el.phaseLine, pc, 'className');
     const b = BIOMES[run.locality.biome];
-    this.set('loc', this.el.locLine, `${run.locality.name} · ${b.name} · wave chance ${Math.round(waveChance(run) * 100)}%`);
+    const cal = calendar(run);
+    const se = SEASONS[season(run)];
+    const threat = bloodMoon(run) ? 'BLOOD MOON tonight' : `wave chance ${Math.round(waveChance(run) * 100)}%`;
+    this.set('loc', this.el.locLine, `${run.locality.name} · ${b.name} · ${se.icon} ${cal.month} ${cal.date} · ${threat}`);
     const bp = run.blueprints.mg + run.blueprints.missile + run.blueprints.artillery;
     const mouths = mouthsToFeed(run);
     this.set(
@@ -418,6 +430,7 @@ export class UI {
       wait: () => this.panelWait(),
       report: () => this.panelReport(),
       note: () => this.panelNote(),
+      railevent: () => this.panelRailEvent(),
     }[P.kind]();
     this.el.panelTitle.textContent = r.title;
     this.el.panelSub.innerHTML = r.sub || '';
@@ -609,6 +622,28 @@ export class UI {
     return { title: 'A NOTE', sub: n.where ? esc(n.where) : '', body, close: 'PUT IT DOWN [E]' };
   }
 
+  panelRailEvent() {
+    const run = this.game.run;
+    const ev = this.panel.arg;
+    const def = RAIL_EVENTS[ev.key];
+    let body = `<div class="box rail-event" style="max-width:720px;margin:auto"><p class="rail-text">${esc(def.text)}</p>`;
+    if (!ev.result) {
+      body += '<div class="rail-opts">';
+      def.options.forEach((o, i) => {
+        const ok = canAfford(run, o.need);
+        body += `<button class="pbtn big rail-opt" data-act="railpick" data-i="${i}" ${ok ? '' : 'disabled'}><b>${esc(o.label)}</b>${o.note ? `<span class="muted"> — ${esc(o.note)}</span>` : ''}${ok ? '' : ' <span class="bad">(not enough)</span>'}</button>`;
+      });
+      body += '</div>';
+    } else {
+      body += '<div class="report">';
+      for (const l of ev.result) body += `<div class="${l.kind || ''}">${esc(l.text)}</div>`;
+      body += '</div>';
+    }
+    body += '</div>';
+    const cal = calendar(run);
+    return { title: def.title, sub: `${this.resLine()} · ${run.hours}h of daylight · ${cal.month} ${cal.date}`, body, close: ev.result ? 'STEAM ON [E]' : 'SAFE CHOICE [E]' };
+  }
+
   panelReport() {
     const lines = this.panel.arg || [];
     let body = `<div class="box report" style="max-width:820px;margin:auto">`;
@@ -629,7 +664,7 @@ export class UI {
     let markers = '<div class="camp-dot" style="left:50%;top:50%">⛺</div>';
     for (const l of locs) {
       const L = LOCATION_TYPES[l.type];
-      const cls = ['loc', P.sel === l.id ? 'sel' : '', l.searched ? 'done' : '', l.claimed ? 'claim' : ''].join(' ');
+      const cls = ['loc', L.landmark ? 'landmark' : '', P.sel === l.id ? 'sel' : '', l.searched ? 'done' : '', l.claimed ? 'claim' : ''].join(' ');
       // a lock you've found (or heard about), a key you know the whereabouts of
       let badge = '';
       if (l.lock && !l.lock.opened && (l.lock.seen || l.lock.hint)) badge += `<span class="badge ${run.keys.includes(l.lock.id) ? 'have' : ''}" title="locked ${esc(l.lock.vault)}">🔒</span>`;
@@ -642,7 +677,8 @@ export class UI {
     if (!loc) right += `<h3>${esc(run.locality.name)}</h3><div class="appraisal">${this.appraisalHtml(run.locality.profile)}</div><div class="muted">Pick a location on the map. Searching costs daylight hours. Bring survivors along, or send one alone to search it for you.</div>`;
     else {
       const L = LOCATION_TYPES[loc.type];
-      right += `<h3>${L.icon} ${esc(loc.name)}</h3><div class="muted">${L.name}</div>`;
+      right += `<h3>${L.icon} ${esc(loc.name)}</h3><div class="${L.landmark ? 'gold' : 'muted'}">${L.landmark ? `★ Landmark · ${L.name}` : L.name}</div>`;
+      if (L.blurb) right += `<div class="muted" style="font-size:17px">${esc(L.blurb)}</div>`;
       right += `<div>Danger: <span class="skulls">${skulls(loc.difficulty)}</span><span class="muted">${skulls(6 - loc.difficulty).replace(/☠/g, '·')}</span></div>`;
       right += `<div>Search time: <b class="gold">${loc.hours} hours</b></div>`;
       right += `<div class="muted" style="font-size:17px">Often holds: ${this.lootHint(L)}</div>`;

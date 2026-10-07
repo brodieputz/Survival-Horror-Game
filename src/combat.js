@@ -20,6 +20,7 @@ export class Combat {
     this.fires = [];
     this.flashes = [];
     this.flames = [];
+    this.pools = [];
     // tracer pool
     const g = new THREE.BufferGeometry();
     this.tPos = new Float32Array(MAX_TRACERS * 6);
@@ -43,6 +44,8 @@ export class Combat {
     for (const f of this.fires) this.group.remove(f.group);
     for (const f of this.flashes) this.group.remove(f.s);
     for (const f of this.flames) this.group.remove(f.s);
+    for (const a of this.pools) this.group.remove(a.mesh);
+    this.pools = [];
     this.projectiles = [];
     this.fires = [];
     this.flashes = [];
@@ -79,6 +82,7 @@ export class Combat {
     const wallD = world.ray3D(origin, dir, range);
     this.raycaster.set(origin, dir);
     this.raycaster.far = wallD;
+    this.raycaster.camera = this.game.camera; // sprites (flames, glows) need it
     const roots = [];
     for (const e of lvl.enemies) if (e.alive && e.pos.distanceTo(origin) < range + 3) roots.push(e.root);
     for (const s of this.shootables()) roots.push(s.root);
@@ -94,7 +98,7 @@ export class Combat {
       if (!key || seen.has(key)) continue;
       seen.add(key);
       if (s) {
-        s.onShot(h.point, src);
+        s.onShot(h.point, src, dmg);
         end = h.point.clone();
         stopped = true;
         break;
@@ -148,6 +152,10 @@ export class Combat {
       hits.push({ e, d });
     }
     hits.sort((a, b) => a.d - b.d);
+    for (const s of this.shootables()) {
+      if (s.x === undefined || dist2D(x, z, s.x, s.z) > reach + 0.8) continue;
+      if (Math.abs(angleDiff(yaw, Math.atan2(s.x - x, s.z - z))) < arc / 2 + 0.3) s.onShot(new THREE.Vector3(s.x, 0.6, s.z), src, dmg);
+    }
     let n = 0;
     for (const { e } of hits.slice(0, cleave)) {
       e.hit(dmg, src, { melee: true });
@@ -276,12 +284,49 @@ export class Combat {
       glow.scale.setScalar(0.4);
       glow.position.y = 0.14;
       mesh.add(glow);
+    } else if (kind === 'acid') {
+      mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12, 7, 5), new THREE.MeshBasicMaterial({ color: 0x9adf20 }));
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex('glow'), color: 0x8aff20, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.scale.setScalar(0.7);
+      mesh.add(glow);
     } else {
       mesh = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), new THREE.MeshStandardMaterial({ color: 0x3a4a2a, emissive: 0x0a0c08, roughness: 0.5, metalness: 0.4 }));
     }
     mesh.position.copy(origin);
     this.group.add(mesh);
     this.projectiles.push({ kind, pos: origin.clone(), vel: vel.clone(), mesh, life: opts.fuse || 8, age: 0, hitSet: new Set(), pierceLeft: opts.pierce ?? 0, ...opts });
+  }
+
+  // A glob of bile hitting a person: the player or a survivor.
+  projHitHuman(p) {
+    const g = this.game;
+    const list = [g.player, ...(g.level.actors || [])];
+    for (const h of list) {
+      if (!h.alive || h.hidden) continue;
+      if (dist2D(p.pos.x, p.pos.z, h.pos.x, h.pos.z) < 0.55 && p.pos.y < 1.9) return h;
+    }
+    return null;
+  }
+
+  // A spitter's bile pools where it lands and burns anyone standing in it.
+  acidSplash(pos, dmg) {
+    const g = this.game;
+    g.audio.flesh?.(pos);
+    g.particles.burst(new THREE.Vector3(pos.x, 0.3, pos.z), 18, 0x8acf20, 3.5, 0.9);
+    const r = 1.3;
+    for (const h of [g.player, ...(g.level.actors || [])]) {
+      if (!h.alive || h.hidden) continue;
+      const d = dist2D(pos.x, pos.z, h.pos.x, h.pos.z);
+      if (d < r) h.damage(dmg * (1 - (d / r) * 0.5), 'acid');
+    }
+    const mesh = new THREE.Mesh(
+      new THREE.CircleGeometry(r, 18),
+      new THREE.MeshBasicMaterial({ color: 0x7ac020, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending })
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(pos.x, 0.03, pos.z);
+    this.group.add(mesh);
+    this.pools.push({ mesh, pos: new THREE.Vector3(pos.x, 0, pos.z), r, life: 5, tick: 0.5 });
   }
 
   projHitEnemy(p) {
@@ -356,6 +401,26 @@ export class Combat {
       if (f.life <= 0) this.group.remove(f.group);
     }
     this.fires = this.fires.filter((f) => f.life > 0);
+    for (const a of this.pools) {
+      a.life -= dt;
+      a.tick -= dt;
+      a.mesh.material.opacity = Math.min(0.55, a.life * 0.3) * (0.85 + Math.sin(g.time * 7 + a.r) * 0.15);
+      if (a.tick <= 0) {
+        a.tick = 0.5;
+        // standing in bile burns, but pools don't stack
+        for (const h of [g.player, ...(lvl.actors || [])])
+          if (h.alive && !h.hidden && g.time - (h.acidT ?? -9) > 0.45 && dist2D(a.pos.x, a.pos.z, h.pos.x, h.pos.z) < a.r * 0.9) {
+            h.acidT = g.time;
+            h.damage(2, 'acid');
+          }
+      }
+      if (a.life <= 0) {
+        this.group.remove(a.mesh);
+        a.mesh.geometry.dispose();
+        a.mesh.material.dispose();
+      }
+    }
+    this.pools = this.pools.filter((a) => a.life > 0);
 
     // projectiles
     const world = lvl.world;
@@ -417,6 +482,10 @@ export class Combat {
           } else boom = true;
           break;
         }
+        if (p.kind === 'acid') {
+          if (this.projHitHuman(p)) boom = true;
+          continue;
+        }
         const e = p.kind === 'frag' || p.kind === 'shell' ? null : this.projHitEnemy(p);
         if (e) {
           if (p.kind === 'arrow') {
@@ -435,7 +504,8 @@ export class Combat {
       if (p.kind === 'missile' && p.age > 6) boom = true;
       if (boom) {
         p.dead = true;
-        if (p.kind === 'molotov') {
+        if (p.kind === 'acid') this.acidSplash(p.pos, p.dmg);
+        else if (p.kind === 'molotov') {
           g.audio.glass(p.pos);
           this.explode(p.pos, p.splash * 0.5, p.dmg * 0.5, p.src, { fire: true, quiet: true });
           this.addFire(p.pos, p.splash, 8, p.src);

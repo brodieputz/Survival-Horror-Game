@@ -20,6 +20,7 @@ uniform vec3 uGround;
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec3 uMoonDir;
+uniform vec3 uMoonCol;
 uniform vec3 uCloudLit;
 uniform vec3 uCloudDark;
 uniform float uSunVis;
@@ -76,7 +77,7 @@ void main() {
     float md = max(dot(d, uMoonDir), 0.0);
     float moon = smoothstep(0.99935, 0.9996, md);
     float crater = noise(d.xy * 900.0) * 0.25 + noise(d.yz * 380.0) * 0.2;
-    col += vec3(0.82, 0.86, 0.95) * moon * (2.6 - crater * 2.0) * uStars;
+    col += uMoonCol * moon * (2.6 - crater * 2.0) * uStars;
     col += vec3(0.35, 0.42, 0.6) * pow(md, 90.0) * 0.35 * uStars;
   }
 
@@ -108,6 +109,7 @@ export class Sky {
       uSunDir: { value: new THREE.Vector3(0.3, 0.6, -0.5).normalize() },
       uSunColor: { value: new THREE.Color(0xfff0dc) },
       uMoonDir: { value: new THREE.Vector3(-0.35, 0.7, 0.45).normalize() },
+      uMoonCol: { value: new THREE.Color(0.82, 0.86, 0.95) },
       uCloudLit: { value: new THREE.Color(0xe8e8e8) },
       uCloudDark: { value: new THREE.Color(0x6a7078) },
       uSunVis: { value: 1 },

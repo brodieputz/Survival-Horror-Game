@@ -3,10 +3,12 @@
 // wheels, telegraph poles whipping past. The land starts out looking like
 // the city you left and ends looking like the one you're heading for. Three
 // shots (a low look along the front, a tracking shot down the side, a wide
-// aerial) with title cards; any key skips it.
+// aerial) with title cards; any key skips it. When something is waiting on
+// the line, the train brakes to a stop partway and the player decides what
+// to do before it steams on.
 import * as THREE from 'three';
 import { World } from './world.js';
-import { BIOMES } from './run.js';
+import { BIOMES, season, seasonalBiome } from './run.js';
 import { cityLabel } from './cities.js';
 import { tex } from './textures.js';
 import { macroVary } from './atmos.js';
@@ -37,14 +39,21 @@ function smokeTexture() {
 }
 
 export class TravelScene {
-  constructor(game, from, to, miles) {
+  constructor(game, from, to, miles, event = null) {
     this.game = game;
     this.kind = 'travel';
     game.level = this;
     this.from = from;
     this.to = to;
     this.miles = miles;
-    this.biomeKey = from.biome;
+    // the land as it looks this time of year
+    this.fromBiome = seasonalBiome(from, season(game.run));
+    this.toBiome = game.run.locality.biome;
+    this.biomeKey = this.fromBiome;
+    this.event = event;
+    this.eventState = event ? 'pending' : 'none';
+    this.speedK = 1;
+    this.resumeT = 0;
     this.enemies = [];
     this.actors = [];
     this.lamps = [];
@@ -60,7 +69,7 @@ export class TravelScene {
     this.buildTrain();
     this.scenery = new THREE.Group();
     this.group.add(this.scenery);
-    this.dressLand(from.biome);
+    this.dressLand(this.fromBiome);
     this.buildSmoke();
     this.cards = 0;
     this.shot = -1;
@@ -215,7 +224,21 @@ export class TravelScene {
   update(dt) {
     const g = this.game;
     this.t += dt;
-    const step = SPEED * dt;
+    this.resumeT = Math.max(0, this.resumeT - dt);
+    // an event on the line: brake to a stop, wait for a decision, steam on
+    if (this.eventState === 'pending' && this.t > 6.0) {
+      this.eventState = 'braking';
+      g.audio.whistle();
+      g.ui.banner('THE TRAIN IS STOPPING', '', 2);
+    }
+    if (this.eventState === 'braking') {
+      this.speedK = Math.max(0, this.speedK - dt / 1.8);
+      if (this.speedK <= 0) {
+        this.eventState = 'stopped';
+        g.openPanel('railevent', this.event);
+      }
+    } else if (this.eventState === 'resumed') this.speedK = Math.min(1, this.speedK + dt / 2.5);
+    const step = SPEED * this.speedK * dt;
     this.dist += step;
     // the train stands still and the world rolls past
     for (const m of this.items) {
@@ -246,7 +269,7 @@ export class TravelScene {
       this.smokeI = (this.smokeI + 1) % SMOKE;
       const st = this.loco.userData.stack;
       p.s.position.set(st.x + (Math.random() - 0.5) * 0.2, st.y + 0.26, st.z);
-      p.v.set((Math.random() - 0.5) * 0.8, 3.2 + Math.random(), SPEED * 0.75);
+      p.v.set((Math.random() - 0.5) * 0.8, 3.2 + Math.random(), SPEED * 0.75 * Math.max(0.1, this.speedK));
       p.life = 1;
       p.s.visible = true;
     }
@@ -268,13 +291,13 @@ export class TravelScene {
     // sound: the chuff of the exhaust and the clack of rail joints
     this.chugT -= dt;
     if (this.chugT <= 0) {
-      this.chugT = 0.19;
-      g.audio.chug?.(0.8);
+      this.chugT = 0.19 / Math.max(0.3, this.speedK);
+      g.audio.chug?.(0.8 * Math.max(0.3, this.speedK));
     }
     this.clackT -= dt;
     if (this.clackT <= 0) {
-      this.clackT = 0.55 + Math.random() * 0.1;
-      g.audio.clack?.();
+      this.clackT = (0.55 + Math.random() * 0.1) / Math.max(0.15, this.speedK);
+      if (this.speedK > 0.1) g.audio.clack?.();
     }
     this.directShots(dt);
   }
@@ -291,7 +314,7 @@ export class TravelScene {
     if (shot !== this.shot) {
       this.shot = shot;
       if (shot === 0) ui.banner(`LEAVING ${this.from.name.toUpperCase()}`, cityLabel(this.from), 4);
-      if (shot === 1) ui.banner(`${this.miles.toLocaleString()} MILES`, `${BIOMES[this.from.biome].name} country gives way to ${BIOMES[this.to.biome].name.toLowerCase()}`, 4);
+      if (shot === 1) ui.banner(`${this.miles.toLocaleString()} MILES`, `${BIOMES[this.fromBiome].name} country gives way to ${BIOMES[this.toBiome].name.toLowerCase()}`, 4);
       if (shot === 2) {
         ui.banner(`ARRIVING ${this.to.name.toUpperCase()}`, cityLabel(this.to), 4.5);
         this.game.audio.whistle();
@@ -304,8 +327,8 @@ export class TravelScene {
     }
     if (this.swapped && !this.swapDone && t > 10.0) {
       this.swapDone = true;
-      this.biomeKey = this.to.biome;
-      this.dressLand(this.to.biome);
+      this.biomeKey = this.toBiome;
+      this.dressLand(this.toBiome);
       g.env.refresh();
       ui.fade(0, 0.6);
     }
@@ -340,6 +363,23 @@ export class TravelScene {
       cam.fov = fov;
       cam.updateProjectionMatrix();
     }
+  }
+
+  // The choice is made: get moving again.
+  resume() {
+    this.eventState = 'resumed';
+    this.resumeT = 0.6;
+  }
+
+  // Skipping the film still stops for whatever is on the line.
+  skip() {
+    if (this.eventState === 'pending' || this.eventState === 'braking') {
+      this.t = Math.max(this.t, 6.0);
+      this.eventState = 'braking';
+      this.speedK = 0.001;
+      return false;
+    }
+    return this.eventState !== 'stopped';
   }
 
   get done() {

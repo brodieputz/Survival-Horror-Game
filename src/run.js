@@ -2,7 +2,7 @@
 // regional maps) plus the generators that create it. Pure data: everything
 // here is JSON-serialisable so the run can be saved between sessions.
 import { RNG } from './util.js';
-import { DAY_HOURS, BARRICADE, MAX_SURVIVORS } from './config.js';
+import { BARRICADE, MAX_SURVIVORS } from './config.js';
 import { WEAPONS, AMMO, AMMO_ORDER, weaponStats, weaponPower, rollWeapon, ammoPickup } from './weapons.js';
 import { CITIES, CITY, cityLabel, miles, citySize } from './cities.js';
 
@@ -149,6 +149,42 @@ export const LOCATION_TYPES = {
     loot: { scrap: 3.4, coal: 0.4, medkit: 1.6, ammo: 1.8, weapon: 1.5, trap: 0.6, blueprint: 0.6, food: 1.2, battery: 0.9 },
     traps: { tripwire: 2, bear: 1, kerosene: 1, mine: 0.3 }, cats: ['melee', 'pistol', 'smg', 'shotgun', 'rifle', 'sniper'], ammo: ['pistol', 'shells', 'rifle'],
     suffix: ['Tower', 'Center', 'Plaza', 'Building', 'Trust Tower', 'Financial Center'],
+  },
+  // ---- landmarks: one or two per city, where the city's character shows ----
+  stadium: {
+    name: 'Stadium', icon: '◎', landmark: true, floors: [1, 1], diff: [4, 6], hours: 5, size: 40, rooms: [6, 9], room: [3, 5], lot: [18, 9], containers: [12, 18], survivor: 0.85, horde: 1.6,
+    theme: { wall: 'concrete', wall2: 'concrete', floor: 'concrete', ceil: 'metal' }, yard: 'asphalt',
+    loot: { scrap: 2, coal: 0.6, medkit: 3, ammo: 2.4, weapon: 1.6, trap: 0.8, blueprint: 0.3, food: 4, battery: 1.4 },
+    traps: { bear: 1, tripwire: 1, kerosene: 1, mine: 0.5 }, cats: ['pistol', 'shotgun', 'rifle', 'smg', 'melee'], ammo: ['pistol', 'shells', 'rifle'],
+    blurb: 'The quarantine camp they set up on the field. Food, medicine and people, and a great many dead.',
+  },
+  railyard: {
+    name: 'Rail Yard', icon: '⊞', landmark: true, floors: [1, 1], diff: [3, 5], hours: 4, size: 36, rooms: [4, 6], room: [6, 10], lot: [16, 8], containers: [10, 15], survivor: 0.3,
+    theme: { wall: 'brick', wall2: 'sheetMetal', floor: 'concrete', ceil: 'metal' }, yard: 'dirt',
+    loot: { scrap: 4.5, coal: 6, medkit: 0.5, ammo: 1.2, weapon: 0.8, trap: 1.6, blueprint: 1.6, food: 1.2, battery: 1.0 },
+    traps: { kerosene: 3, bear: 1, tripwire: 1, mine: 1 }, cats: ['melee', 'shotgun', 'rifle', 'thrown'], ammo: ['shells', 'rifle', 'fuel', 'explosives'],
+    blurb: 'Engine sheds full of coal, spares and turret plans.',
+  },
+  mall: {
+    name: 'Shopping Mall', icon: '▣', landmark: true, floors: [2, 2], diff: [3, 5], hours: 5, size: 38, rooms: [12, 16], room: [2, 4], lot: [18, 8], containers: [14, 20], survivor: 0.6,
+    theme: { wall: 'plaster', wall2: 'tile', floor: 'terrazzo', ceil: 'ceiling' }, yard: 'asphalt',
+    loot: { scrap: 2.4, coal: 0.4, medkit: 1.6, ammo: 2, weapon: 1.8, trap: 0.8, blueprint: 0.3, food: 3, battery: 2.4 },
+    traps: { tripwire: 2, bear: 1, kerosene: 1, mine: 0 }, cats: ['melee', 'pistol', 'shotgun', 'rifle', 'bow', 'smg'], ammo: ['pistol', 'shells', 'rifle', 'arrows'],
+    blurb: 'Two floors of stores: groceries, sporting goods, batteries by the crate.',
+  },
+  grain: {
+    name: 'Grain Co-op', icon: '⌸', landmark: true, floors: [1, 1], diff: [2, 4], hours: 3, size: 30, rooms: [4, 6], room: [6, 9], lot: [14, 8], containers: [9, 13], survivor: 0.4,
+    theme: { wall: 'sheetMetal', wall2: 'wood', floor: 'concrete', ceil: 'metal' }, yard: 'dirt',
+    loot: { scrap: 2, coal: 1.2, medkit: 0.5, ammo: 1, weapon: 0.6, trap: 1.4, blueprint: 0.2, food: 7, battery: 0.8 },
+    traps: { bear: 3, kerosene: 1, tripwire: 1, mine: 0 }, cats: ['melee', 'shotgun', 'rifle', 'bow'], ammo: ['shells', 'rifle', 'arrows'],
+    blurb: 'Sacks of grain and feed for a whole county, under the elevators.',
+  },
+  mine: {
+    name: 'Coal Mine', icon: '⛏', landmark: true, floors: [1, 1], diff: [3, 5], hours: 4, size: 32, rooms: [4, 6], room: [6, 9], lot: [14, 8], containers: [9, 13], survivor: 0.3,
+    theme: { wall: 'stoneBlocks', wall2: 'wood', floor: 'dirt', ceil: 'wood' }, yard: 'dirt',
+    loot: { scrap: 2.6, coal: 8, medkit: 0.5, ammo: 0.8, weapon: 0.6, trap: 2.2, blueprint: 0.4, food: 0.8, battery: 1.8 },
+    traps: { mine: 3, kerosene: 2, bear: 1, tripwire: 1 }, cats: ['melee', 'shotgun', 'thrown'], ammo: ['shells', 'explosives', 'fuel'],
+    blurb: 'The pithead and its sheds. Coal by the ton, and blasting powder.',
   },
 };
 export const LOCATION_KEYS = Object.keys(LOCATION_TYPES);
@@ -351,10 +387,11 @@ export function removeWeapon(run, uid) {
 // ---------------------------------------------------------------- new run
 export function newRun(seed = (Math.random() * 0xffffffff) >>> 0) {
   const run = {
-    version: 4,
+    version: 5,
     seed,
+    startDoy: 70 + ((seed >>> 3) % 25),
     day: 1,
-    hours: DAY_HOURS,
+    hours: 12,
     phase: 'day',
     scrap: 60,
     coal: 2,
@@ -397,8 +434,50 @@ export function newRun(seed = (Math.random() * 0xffffffff) >>> 0) {
   return run;
 }
 
+// ---------------------------------------------------------------- seasons
+// The calendar moves on four days with every day of the run, starting in
+// early spring. Seasons change the light, the land and the dead.
+export const CAL_STEP = 4;
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const MONTH_START = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+export const SEASONS = {
+  spring: { name: 'Spring', icon: '❀', hours: 12, wave: 1.0, spd: 1.0, note: 'Rain and mud. The dead are restless.' },
+  summer: { name: 'Summer', icon: '☀', hours: 14, wave: 1.25, spd: 1.08, note: 'Long days, and the dead come in great numbers.' },
+  autumn: { name: 'Autumn', icon: '❦', hours: 11, wave: 1.08, spd: 1.0, note: 'Harvest time: farms are full of food.' },
+  winter: { name: 'Winter', icon: '❄', hours: 10, wave: 0.9, spd: 0.85, note: 'Short days, bitter nights. Keep coal for the stove.' },
+};
+export function dayOfYear(run) {
+  return ((run.startDoy ?? 80) + (run.day - 1) * CAL_STEP) % 365;
+}
+export function calendar(run) {
+  const d = dayOfYear(run);
+  let m = 11;
+  while (m > 0 && MONTH_START[m] > d) m--;
+  return { month: MONTHS[m], date: d - MONTH_START[m] + 1, m };
+}
+export function season(run) {
+  const { m } = calendar(run);
+  return m === 11 || m <= 1 ? 'winter' : m <= 4 ? 'spring' : m <= 7 ? 'summer' : 'autumn';
+}
+export const dayHours = (run) => SEASONS[season(run)].hours;
+// How a city looks in a season: snow lies in the north in winter, and the
+// cold north thaws in summer.
+export function seasonalBiome(city, seasonKey) {
+  const b = city.biome;
+  if (seasonKey === 'winter' && city.lat >= 36.5 && b !== 'desert') return 'tundra';
+  if (seasonKey === 'winter' && city.lat >= 34 && (b === 'forest' || b === 'plains')) return 'tundra';
+  if (seasonKey === 'summer' && b === 'tundra') return city.lon < -100 ? 'plains' : 'forest';
+  if (seasonKey === 'autumn' && b === 'tundra' && city.lat < 44) return city.lon < -100 ? 'plains' : 'forest';
+  return b;
+}
+// A night is cold enough to need the stove where there's snow on the ground.
+export const coldNight = (run) => season(run) === 'winter' && run.locality.biome === 'tundra';
+
+// Every seventh night the moon rises red and the dead come for certain.
+export const bloodMoon = (run) => run.day % 7 === 0;
+
 export const barricadeMax = (run) => BARRICADE.baseHp + BARRICADE.perLevel * run.barricade.level;
-export const waveChance = (run) => Math.min(1, 0.5 + 0.01 * (run.day - 1));
+export const waveChance = (run) => (bloodMoon(run) ? 1 : Math.min(1, 0.55 + 0.015 * (run.day - 1)));
 
 // ---------------------------------------------------------------- cities
 // What a city is likely to hold follows from what it really is: its size
@@ -432,7 +511,7 @@ function hashStr(str) {
 // Danger follows the size of the place: more people, more dead.
 export const cityDanger = (c) => (c.pop < 250 ? 0 : c.pop < 1000 ? 1 : c.pop < 4000 ? 2 : 3);
 
-export function cityProfile(city, rng) {
+export function cityProfile(city, rng, seasonKey = null) {
   const size = citySize(city);
   const rep = new RNG(hashStr(city.id));
   const mult = {};
@@ -440,6 +519,9 @@ export function cityProfile(city, rng) {
     let m = SIZE_MULT[k][size];
     for (const t of city.tags) m *= TAG_MULT[t][k] || 1;
     m *= Math.exp(rep.range(-0.18, 0.18)) * Math.exp(rng.range(-0.12, 0.12));
+    // the harvest is in during autumn; winter larders run thin
+    if (k === 'food' && seasonKey === 'autumn') m *= city.tags.includes('farm') ? 1.45 : 1.15;
+    if (k === 'food' && seasonKey === 'winter') m *= 0.8;
     mult[k] = Math.round(Math.max(0.3, Math.min(2.4, m)) * 100) / 100;
   }
   return { mult, danger: cityDanger(city) };
@@ -472,8 +554,8 @@ export function generateLocality(run, city, profile) {
   const seed = (Math.random() * 0xffffffff) >>> 0;
   const rng = new RNG(seed);
   const size = citySize(city);
-  profile = profile || cityProfile(city, rng);
-  const loc = { seed, biome: city.biome, city: city.id, size, index, profile, name: cityLabel(city), locations: [] };
+  profile = profile || cityProfile(city, rng, season(run));
+  const loc = { seed, biome: seasonalBiome(city, season(run)), city: city.id, size, index, profile, name: cityLabel(city), locations: [] };
   const n = [rng.int(5, 7), rng.int(7, 9), rng.int(9, 11), rng.int(11, 13)][size];
   const typeW = { ...TYPE_BASE[size] };
   typeW.military = city.tags.includes('military') ? 1.6 : Math.min(0.45, 0.1 + 0.03 * index);
@@ -511,8 +593,61 @@ export function generateLocality(run, city, profile) {
     placed.push({ x, y });
     loc.locations.push(generateLocation(run, rng, types[i], index, profile, x, y, used));
   }
+  // landmarks: what the city is known for
+  const marks = landmarksFor(city, size, rng);
+  for (const t of marks) {
+    let x = 0;
+    let y = 0;
+    for (let a = 0; a < 80; a++) {
+      x = rng.range(0.1, 0.9);
+      y = rng.range(0.12, 0.88);
+      if (Math.hypot(x - 0.5, y - 0.5) < 0.2) continue;
+      if (placed.every((p) => Math.hypot(p.x - x, p.y - y) > gap)) break;
+    }
+    placed.push({ x, y });
+    const l = generateLocation(run, rng, t, index, profile, x, y, used);
+    l.name = landmarkName(t, city, rng);
+    l.landmark = true;
+    loc.locations.push(l);
+  }
   addLocksAndNotes(rng, loc);
   return loc;
+}
+
+// Which landmarks a city has: big cities their stadium and mall, railroad
+// and industrial towns a yard, farm country a grain co-op, coal country a mine.
+function landmarksFor(city, size, rng) {
+  const c = [];
+  const tags = city.tags;
+  if (tags.includes('coal')) c.push(['mine', 0.95]);
+  if (tags.includes('farm')) c.push(['grain', 0.85]);
+  if (tags.includes('industry') || tags.includes('port') || tags.includes('coal') || size >= 2) c.push(['railyard', size >= 2 ? 0.55 : 0.75]);
+  if (size >= 3) c.push(['stadium', 0.9]);
+  else if (size === 2) c.push(['stadium', 0.35]);
+  if (size >= 2) c.push(['mall', size >= 3 ? 0.7 : 0.45]);
+  if (size === 1 && !c.length) c.push(['mall', 0.25]);
+  const out = [];
+  for (const [t, p] of rng.shuffle(c)) if (out.length < (size >= 3 ? 2 : 1) && rng.chance(p)) out.push(t);
+  return out;
+}
+
+const STADIUM_NAMES = ['Memorial Stadium', 'Veterans Stadium', 'Municipal Stadium', 'Field', 'Coliseum', 'Bowl'];
+const MINE_NAMES = ['Black Diamond Mine', 'Big Hollow Mine', 'Number Nine Mine', 'Consolidation No. 4', 'Red Ash Colliery', 'Bear Creek Mine'];
+function landmarkName(type, city, rng) {
+  const n = city.name;
+  switch (type) {
+    case 'stadium':
+      return `${n} ${rng.pick(STADIUM_NAMES)}`;
+    case 'railyard':
+      return `${n} ${rng.pick(['Rail Yard', 'Union Yard', 'Freight Yard', 'Roundhouse'])}`;
+    case 'mall':
+      return rng.pick([`${n} Galleria`, `${n} Mall`, `${rng.pick(STREETS)} Square Mall`, `${rng.pick(STREETS)} Town Center`]);
+    case 'grain':
+      return `${n} ${rng.pick(['Grain Co-op', 'Farmers Elevator', 'Grain & Feed'])}`;
+    case 'mine':
+      return rng.pick(MINE_NAMES);
+  }
+  return n;
 }
 
 // ---------------------------------------------------------------- keys, locked gates, notes
@@ -526,6 +661,11 @@ const VAULTS = {
   hospital: 'pharmacy',
   military: 'armory',
   skyscraper: 'executive vault',
+  stadium: 'quarantine supply cage',
+  railyard: 'parts store',
+  mall: 'gun counter',
+  grain: 'seed vault',
+  mine: 'powder magazine',
 };
 const KEY_HINTS = [
   (k, v) => `Whoever reads this — the key to the ${v} is at ${k}. I couldn't get back for it.`,
@@ -591,6 +731,7 @@ function generateLocation(run, rng, type, index, profile, x, y, usedNames) {
   let name = '';
   for (let a = 0; a < 8; a++) {
     if (L.names) name = rng.pick(L.names);
+    else if (L.landmark) name = L.name; // named after its city by the caller
     else if (type === 'hospital') name = `${rng.pick(SAINTS)} ${rng.pick(L.suffix)}`;
     else name = `${rng.pick(STREETS)} ${rng.pick(L.suffix)}`;
     if (!usedNames.has(name)) break;
@@ -915,39 +1056,50 @@ export function dailyRations(run) {
 export function waveComposition(run) {
   const w = run.wavesFaced + 1;
   const danger = run.locality.profile?.danger ?? 1;
-  const dangerMul = 1 + 0.12 * Math.max(0, danger - 1);
-  const total = Math.min(170, Math.round((10 + 6 * w + 0.45 * w * w + run.day * 0.6) * dangerMul));
+  const dangerMul = 1 + 0.15 * Math.max(0, danger - 1);
+  const se = SEASONS[season(run)];
+  const moon = bloodMoon(run);
+  const total = Math.min(260, Math.round((14 + 8 * w + 0.6 * w * w + run.day * 0.8) * dangerMul * se.wave * (moon ? 1.6 : 1)));
   const weights = {
-    walker: Math.max(0.2, 1.1 - 0.1 * (w - 1)),
-    grunt: 0.4 + 0.03 * w,
-    runner: 0.2 + 0.07 * w,
-    hound: w >= 2 ? 0.1 + 0.03 * w : 0,
-    fat: w >= 2 ? 0.12 + 0.04 * w : 0,
-    rotter: w >= 3 ? 0.08 + 0.03 * w : 0,
-    armored: w >= 4 ? 0.08 + 0.04 * w : 0,
-    brute: w >= 5 ? 0.04 + 0.01 * w : 0,
+    walker: Math.max(0.2, 1.0 - 0.1 * (w - 1)),
+    grunt: 0.45 + 0.04 * w,
+    runner: 0.3 + 0.08 * w,
+    hound: 0.08 + 0.04 * w,
+    fat: w >= 2 ? 0.14 + 0.05 * w : 0,
+    rotter: w >= 2 ? 0.08 + 0.04 * w : 0,
+    spitter: w >= 3 ? 0.06 + 0.025 * w : 0,
+    armored: w >= 3 ? 0.08 + 0.05 * w : 0,
+    brute: w >= 4 ? 0.05 + 0.015 * w : 0,
   };
   const rng = new RNG((run.seed + run.day * 7919) >>> 0);
   const list = [];
   let brutes = 0;
-  const bruteCap = w >= 5 ? 1 + Math.floor((w - 5) / 3) : 0;
+  let spitters = 0;
+  const bruteCap = w >= 4 ? 1 + Math.floor((w - 4) / 2) + (moon ? 1 : 0) : 0;
+  const spitCap = 3 + Math.floor(w / 2);
   for (let i = 0; i < total; i++) {
     let t = pickWeighted(rng, weights);
     if (t === 'brute') {
       if (brutes >= bruteCap) t = 'fat';
       else brutes++;
     }
+    if (t === 'spitter') {
+      if (spitters >= spitCap) t = 'runner';
+      else spitters++;
+    }
     list.push(t);
   }
   // heavies arrive later in the night
-  const heavy = new Set(['brute', 'armored', 'rotter']);
+  const heavy = new Set(['brute', 'armored', 'rotter', 'spitter']);
   list.sort((a, b) => (heavy.has(a) ? 1 : 0) - (heavy.has(b) ? 1 : 0) + (rng.next() - 0.5) * 0.9);
   return {
     wave: w,
     list,
-    hpMul: (1 + 0.1 * (w - 1)) * (1 + 0.05 * Math.max(0, danger - 1)),
-    spdMul: Math.min(1.6, 1 + 0.035 * (w - 1)),
-    dmgMul: 1 + 0.08 * (w - 1),
+    bloodMoon: moon,
+    season: season(run),
+    hpMul: (1 + 0.12 * (w - 1)) * (1 + 0.06 * Math.max(0, danger - 1)) * (moon ? 1.2 : 1),
+    spdMul: Math.min(1.75, (1 + 0.04 * (w - 1)) * se.spd * (moon ? 1.1 : 1)),
+    dmgMul: 1 + 0.1 * (w - 1),
   };
 }
 
@@ -959,8 +1111,8 @@ export const coalFor = (mi) => Math.max(2, Math.round(mi / 100));
 
 function cityOption(run, city, rng, from) {
   const mi = Math.round(miles(from, city));
-  const profile = cityProfile(city, rng);
-  return { city: city.id, biome: city.biome, name: cityLabel(city), miles: mi, coal: coalFor(mi), size: citySize(city), profile, appraisal: appraisal(profile) };
+  const profile = cityProfile(city, rng, season(run));
+  return { city: city.id, biome: seasonalBiome(city, season(run)), name: cityLabel(city), miles: mi, coal: coalFor(mi), size: citySize(city), profile, appraisal: appraisal(profile) };
 }
 
 export function regionalOptions(run) {
@@ -1011,7 +1163,7 @@ export function loadRun() {
     const s = localStorage.getItem(SAVE_KEY);
     if (!s) return null;
     const run = JSON.parse(s);
-    if (!run || run.version < 2 || run.version > 4) return null;
+    if (!run || run.version < 2 || run.version > 5) return null;
     return migrateRun(run);
   } catch (e) {
     return null;
@@ -1054,6 +1206,10 @@ function migrateRun(run) {
     for (const l of run.locality.locations) l.floors = l.floors || 1;
     run.region = { options: regionalOptions(run) };
     run.version = 4;
+  }
+  if (run.version === 4) {
+    run.startDoy = 80;
+    run.version = 5;
   }
   return run;
 }

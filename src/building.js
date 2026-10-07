@@ -15,7 +15,7 @@ import { makeContainer, makeWallLamp, makeDebris, CONTAINER_WIDTH, CONTAINER_DEP
 import { buildExterior } from './exterior.js';
 import { makeFurniture, FURN } from './furniture.js';
 import { tex } from './textures.js';
-import { LOCATION_TYPES, describeItem, grantLoot } from './run.js';
+import { LOCATION_TYPES, describeItem, grantLoot, grantXp } from './run.js';
 import { WEAPONS, RARITY } from './weapons.js';
 
 const HIDE_DIMS = {
@@ -36,7 +36,7 @@ const CONTAINER_LABEL = {
   shelf: 'Search shelves',
 };
 // everything that belongs to one floor
-const FLOOR_FIELDS = ['d', 'world', 'fgroup', 'hiding', 'containers', 'found', 'bearTraps', 'wires', 'lamps', 'glassTiles', 'enemies', 'explored', 'mapCanvas', 'mapCtx', 'airDist', 'pickups', 'windows', 'gateObj', 'exitMarker', 'prevPlayer'];
+const FLOOR_FIELDS = ['d', 'world', 'fgroup', 'hiding', 'containers', 'found', 'bearTraps', 'wires', 'lamps', 'glassTiles', 'enemies', 'explored', 'mapCanvas', 'mapCtx', 'airDist', 'pickups', 'windows', 'gateObj', 'exitMarker', 'prevPlayer', 'boards', 'nest', 'stairs'];
 const MAP_PX = 4; // minimap pixels per tile
 
 export class BuildingScene {
@@ -131,8 +131,17 @@ export class BuildingScene {
     this.buildWindows();
     this.buildStairs();
     this.buildGate();
+    this.buildBoards();
+    this.buildNest();
     this.buildPickups();
-    for (const e of d.enemies) this.enemies.push(new Enemy(game, e.type, e.x, e.z, { group: this.fgroup }));
+    for (const e of d.enemies) {
+      const en = new Enemy(game, e.type, e.x, e.z, { group: this.fgroup });
+      if (e.trapped) {
+        en.trapped = true;
+        en.confine = d.boarded.room;
+      }
+      this.enemies.push(en);
+    }
     for (const s of d.survivors) {
       const rec = this.loc.survivors[s.idx];
       if (!rec) continue;
@@ -154,7 +163,7 @@ export class BuildingScene {
     const dist = new Uint8Array(W * H).fill(255);
     const q = [];
     for (let i = 0; i < W * H; i++)
-      if (tiles[i] === T.YARD) {
+      if (tiles[i] === T.YARD || this.d.sky?.has(i)) {
         dist[i] = 0;
         q.push(i);
       }
@@ -505,6 +514,229 @@ export class BuildingScene {
     else this.world.edgeS[(e.y - (e.dy < 0 ? 1 : 0)) * this.d.W + e.x] = EDGE.DOOR;
   }
 
+  // A doorway nailed shut with planks, and the dead shut in behind it.
+  buildBoards() {
+    this.boards = null;
+    const b = this.d.boarded;
+    if (!b) return;
+    const g = new THREE.Group();
+    const wood = M.lambert({ color: 0x5e4a34, roughness: 0.95 });
+    const wood2 = M.lambert({ color: 0x7a6248, roughness: 0.9 });
+    const planks = [];
+    for (let i = 0; i < 7; i++) {
+      const pl = M.box(DOOR_W + 0.4 + this.rng.range(-0.1, 0.15), 0.17, 0.05, i % 2 ? wood : wood2, this.rng.range(-0.08, 0.08), 0.3 + i * 0.32, -0.08);
+      pl.rotation.z = this.rng.range(-0.22, 0.22);
+      pl.userData.base = { y: pl.position.y, rz: pl.rotation.z };
+      g.add(pl);
+      planks.push(pl);
+    }
+    // a warning painted across the boards
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.3, 0.55),
+      new THREE.MeshBasicMaterial({ map: signTex('DEAD INSIDE', 'rgba(0,0,0,0)', '#9a1010'), transparent: true, depthWrite: false })
+    );
+    sign.position.set(0, 1.35, -0.12);
+    sign.rotation.y = Math.PI;
+    g.add(sign);
+    planks.push(sign);
+    g.position.set(b.x, 0, b.z);
+    g.rotation.y = b.angle;
+    this.fgroup.add(g);
+    const hw = DOOR_W / 2;
+    const collider = b.dx ? this.world.addCollider(b.x - 0.1, b.z - hw, b.x + 0.1, b.z + hw) : this.world.addCollider(b.x - hw, b.z - 0.1, b.x + hw, b.z + 0.1);
+    this.boards = { ...b, group: g, planks, collider, hp: 110, broken: false, roused: false, shake: 0, fallT: 0 };
+  }
+
+  // Something heard the player: the dead inside start battering the boards.
+  rouseBoards() {
+    const bd = this.boards;
+    if (!bd || bd.broken || bd.roused) return;
+    bd.roused = true;
+    this.game.ui.message('Something behind a boarded-up door starts hammering to get out...', 'bad', 4);
+  }
+
+  damageBoards(amount, src) {
+    const bd = this.boards;
+    if (!bd || bd.broken) return;
+    bd.hp -= amount;
+    bd.shake = 1;
+    this.game.audio.barricadeHit(src?.pos || { x: bd.x, y: 1, z: bd.z }, false);
+    this.game.particles.burst(new THREE.Vector3(bd.x, 1.1, bd.z), 4, 0x6a5238, 2);
+    if (bd.hp <= 0) this.breakBoards(false);
+  }
+
+  pryBoards() {
+    const g = this.game;
+    g.emitNoise(this.boards.x, this.boards.z, NOISE.crate * 1.6, 'player');
+    g.audio.crate(true);
+    this.breakBoards(true);
+    g.ui.message('You wrench the boards away. Whatever was shut in there is coming out!', 'bad', 4);
+  }
+
+  breakBoards(byPlayer) {
+    const bd = this.boards;
+    const g = this.game;
+    bd.broken = true;
+    bd.fallT = 0.001;
+    this.world.removeCollider(bd.collider);
+    const e = bd.edge;
+    if (e.dx) this.world.edgeE[e.y * this.d.W + e.x - (e.dx < 0 ? 1 : 0)] = EDGE.DOOR;
+    else this.world.edgeS[(e.y - (e.dy < 0 ? 1 : 0)) * this.d.W + e.x] = EDGE.DOOR;
+    if (!byPlayer) {
+      g.audio.barricadeBreak();
+      g.ui.message('The boards splinter — they are out!', 'bad', 4);
+    }
+    g.particles.burst(new THREE.Vector3(bd.x, 1.2, bd.z), 30, 0x6a5238, 4);
+    for (const z of this.enemies) {
+      if (!z.trapped) continue;
+      z.trapped = false;
+      z.confine = null;
+      if (!z.alive) continue;
+      z.lastSeen.copy(g.player.pos);
+      z.foe = null;
+      z.setState('chase');
+    }
+  }
+
+  updateBoards(dt) {
+    const bd = this.boards;
+    if (!bd) return;
+    const p = this.game.player;
+    if (bd.broken) {
+      if (bd.fallT > 0 && bd.fallT < 1.2) {
+        bd.fallT += dt;
+        const k = Math.min(1, bd.fallT / 0.6);
+        bd.planks.forEach((pl, i) => {
+          const b = pl.userData.base;
+          if (!b) {
+            pl.visible = false;
+            return;
+          }
+          pl.position.y = b.y + (0.04 + i * 0.03 - b.y) * k * k;
+          pl.position.z = -0.08 - k * (0.3 + (i % 3) * 0.25);
+          pl.rotation.z = b.rz + k * (i % 2 ? 0.6 : -0.5);
+        });
+      }
+      return;
+    }
+    const inside = this.enemies.filter((e) => e.trapped && e.alive);
+    if (!inside.length) return;
+    if (!bd.roused && p.alive && !p.hidden && dist2D(p.pos.x, p.pos.z, bd.x, bd.z) < 8) this.rouseBoards();
+    if (bd.roused) for (const e of inside) if (e.state !== 'bang' && e.stun <= 0) e.setState('bang');
+    bd.shake = Math.max(0, bd.shake - dt * 5);
+    bd.group.position.x = bd.x + (Math.random() - 0.5) * bd.shake * 0.06;
+    bd.group.position.z = bd.z + (Math.random() - 0.5) * bd.shake * 0.06;
+  }
+
+  // A mound of flesh the dead keep crawling out of.
+  buildNest() {
+    this.nest = null;
+    const n = this.d.nest;
+    if (!n) return;
+    const root = new THREE.Group();
+    const flesh = M.lambert({ color: 0x4a1418, roughness: 0.45, emissive: 0x1a0204 });
+    const vein = M.lambert({ color: 0x8a2a20, roughness: 0.3, emissive: 0x3a0806 });
+    const blobs = [];
+    for (let i = 0; i < 9; i++) {
+      const r = this.rng.range(0.25, 0.6) * (i === 0 ? 1.6 : 1);
+      const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 9), i % 3 ? flesh : vein);
+      const a = this.rng.range(0, Math.PI * 2);
+      const d = i === 0 ? 0 : this.rng.range(0.35, 1.0);
+      m.position.set(Math.cos(a) * d, r * 0.45, Math.sin(a) * d);
+      m.scale.y = 0.7;
+      m.castShadow = true;
+      m.userData.base = m.scale.x;
+      root.add(m);
+      blobs.push(m);
+    }
+    const glow = M.glowSprite(0xff3020, 2.2, 0.25);
+    glow.position.y = 0.6;
+    glow.raycast = () => {};
+    root.add(glow);
+    root.position.set(n.x, 0, n.z);
+    this.fgroup.add(root);
+    const nest = { x: n.x, z: n.z, root, blobs, glow, hp: n.hp, maxHp: n.hp, alive: true, spawnT: 4, kids: [] };
+    nest.onShot = (point, src, dmg = 20) => this.hurtNest(dmg, src);
+    root.traverse((o) => {
+      if (o.isMesh) o.userData.shootable = nest;
+    });
+    this.nest = nest;
+  }
+
+  hurtNest(dmg, src) {
+    const n = this.nest;
+    if (!n || !n.alive) return;
+    n.hp -= dmg;
+    n.hurt = 1;
+    const g = this.game;
+    g.audio.flesh(n.root.position);
+    g.particles.burst(new THREE.Vector3(n.x, 0.6, n.z), 8, 0x6a0808, 2.5);
+    if (!n.roused) {
+      n.roused = true;
+      n.spawnT = Math.min(n.spawnT, 0.8);
+    }
+    if (n.hp > 0) return;
+    n.alive = false;
+    g.audio.monsterDeath('brute', n.root.position);
+    g.particles.burst(new THREE.Vector3(n.x, 0.5, n.z), 60, 0x5a0606, 6, 1.4);
+    n.root.visible = false;
+    const run = g.run;
+    run.stats.kills++;
+    if (src === g.player) {
+      const lv = grantXp(run.player, 12);
+      if (lv) g.ui.message(`LEVEL UP! You are now level ${run.player.level}.`, 'level', 4);
+    }
+    // the nest was built around someone's supplies
+    const items = [{ k: 'scrap', n: 4 + this.loc.difficulty * 2 }, { k: 'food', n: 2 + this.rng.int(0, 2) }];
+    for (const it of grantLoot(run, items, this.L.ammo)) g.trip.found.push(it);
+    g.ui.message(`The nest bursts apart. Among the remains: ${items.map(describeItem).join(', ')}.`, 'gold', 5);
+  }
+
+  updateNest(dt) {
+    const n = this.nest;
+    if (!n || !n.alive) return;
+    const g = this.game;
+    const p = g.player;
+    const t = g.time;
+    n.hurt = Math.max(0, (n.hurt || 0) - dt * 3);
+    n.blobs.forEach((b, i) => {
+      const k = b.userData.base * (1 + Math.sin(t * 2.2 + i) * 0.05 + n.hurt * 0.08);
+      b.scale.set(k, k * 0.7, k);
+    });
+    n.glow.material.opacity = 0.18 + Math.sin(t * 2.2) * 0.08 + n.hurt * 0.3;
+    const d = dist2D(p.pos.x, p.pos.z, n.x, n.z);
+    if (d > 26 && !n.roused) return;
+    n.spawnT -= dt;
+    n.kids = n.kids.filter((e) => e.alive);
+    if (n.spawnT > 0 || n.kids.length >= 3 + Math.floor(this.loc.difficulty / 2)) return;
+    n.spawnT = (n.roused ? 6 : 10) + Math.random() * 5;
+    const type = Math.random() < 0.55 ? 'crawler' : Math.random() < 0.6 ? 'walker' : 'runner';
+    const a = Math.random() * Math.PI * 2;
+    const e = new Enemy(g, type, n.x + Math.cos(a) * 0.9, n.z + Math.sin(a) * 0.9, { group: this.fgroup });
+    this.world.collide(e.pos, e.radius, true);
+    e.lastSeen.copy(p.pos);
+    if (p.alive && !p.hidden && d < 18) e.setState('chase');
+    else {
+      e.setState('investigate');
+      e.target = p.pos.clone();
+    }
+    this.enemies.push(e);
+    n.kids.push(e);
+    g.audio.growl(e.voice, e.pos, 1.1);
+    g.particles.burst(new THREE.Vector3(e.pos.x, 0.4, e.pos.z), 14, 0x5a0606, 3);
+  }
+
+  shootables() {
+    return this.nest && this.nest.alive ? [this.nest] : [];
+  }
+
+  onExplosion(pos, radius, src) {
+    const n = this.nest;
+    if (n && n.alive && dist2D(pos.x, pos.z, n.x, n.z) < radius + 1) this.hurtNest(120 * (1 - dist2D(pos.x, pos.z, n.x, n.z) / (radius + 1)) + 40, src);
+    const bd = this.boards;
+    if (bd && !bd.broken && dist2D(pos.x, pos.z, bd.x, bd.z) < radius) this.breakBoards(true);
+  }
+
   // Batteries, the key, notes.
   buildPickups() {
     const lock = this.loc.lock;
@@ -605,6 +837,8 @@ export class BuildingScene {
     for (const c of this.containers) if (c.seen) out.push({ x: c.x, z: c.z, color: c.opened ? '#4a4038' : '#f0b43a', shape: 'dot' });
     for (const f of this.found) if (f.seen && f.mode === 'found') out.push({ x: f.pos.x, z: f.pos.z, color: '#6fd05a', shape: 'dot' });
     for (const a of this.actors) if (a.alive) out.push({ x: a.pos.x, z: a.pos.z, color: '#6fd6ff', shape: 'dot' });
+    if (this.boards?.roused && !this.boards.broken) out.push({ x: this.boards.x, z: this.boards.z, color: '#d03020', shape: 'square' });
+    if (this.nest?.alive && this.nest.roused) out.push({ x: this.nest.x, z: this.nest.z, color: '#d03020', shape: 'dot' });
     if (this.gateObj?.seen) out.push({ x: this.gateObj.x, z: this.gateObj.z, color: this.loc.lock.opened ? '#8a8a8a' : '#e0b030', shape: 'square' });
     return out;
   }
@@ -625,6 +859,8 @@ export class BuildingScene {
       const has = this.game.run.keys.includes(this.loc.lock.id);
       out.push({ type: 'gate', obj: go, x: go.x - go.dx * 0.6, z: go.z - go.dy * 0.6, label: has ? `Unlock the ${this.loc.lock.vault}` : `Locked (${this.loc.lock.vault})`, range: 2.2 });
     }
+    const bd = this.boards;
+    if (bd && !bd.broken) out.push({ type: 'boards', obj: bd, x: bd.x - bd.dx * 0.6, z: bd.z - bd.dy * 0.6, label: 'Pry the boards off (loud)', range: 2.2 });
     if (this.exitMarker) out.push({ type: 'exit', obj: this.exitMarker, x: this.exitMarker.x, z: this.exitMarker.z, label: 'Head back to camp', range: 2.4 });
     return out;
   }
@@ -727,6 +963,72 @@ export class BuildingScene {
     g.ui.message(actor.rec.dog ? `${actor.rec.name} the ${actor.rec.look.breed.toLowerCase()} pads over and joins you!` : `${actor.rec.name} (level ${actor.rec.level}) joins you!`, 'good', 4);
   }
 
+  // The dead hunting the player near the stairs follow them to the next
+  // floor, arriving a little later depending on how far behind they were.
+  takeFollowers() {
+    const sp = this.d.stairs?.spot;
+    if (!sp) return [];
+    const out = [];
+    for (const e of this.enemies) {
+      if (!e.alive || e.trapped || e.stun > 0 || !e.hunting) continue;
+      const d = dist2D(e.pos.x, e.pos.z, sp.x, sp.z);
+      if (d > 28) continue;
+      out.push({ e, delay: 1.0 + d / Math.max(1, e.s.run * e.mul.spd) + Math.random() * 0.6 });
+    }
+    if (!out.length) return out;
+    const set = new Set(out.map((f) => f.e));
+    this.enemies = this.enemies.filter((e) => !set.has(e));
+    for (const f of out) f.e.root.parent?.remove(f.e.root);
+    return out;
+  }
+
+  queueFollowers(list, floor) {
+    this.incoming = (this.incoming || []).concat(list.map((f) => ({ ...f, floor })));
+  }
+
+  updateIncoming(dt) {
+    if (!this.incoming?.length) return;
+    const g = this.game;
+    const p = g.player;
+    let arrived = 0;
+    this.incoming = this.incoming.filter((f) => {
+      f.delay -= dt;
+      if (f.delay > 0) return true;
+      const e = f.e;
+      const here = f.floor === this.floorIdx;
+      const st = here ? this : this.states[f.floor];
+      const sp = st?.d?.stairs?.spot;
+      if (!st || !sp || !e.alive) return false;
+      e.pos.set(sp.x + (Math.random() - 0.5) * 0.8, 0, sp.z + (Math.random() - 0.5) * 0.8);
+      e.yaw = sp.yaw ?? e.yaw;
+      e.path = null;
+      e.lodAcc = 0;
+      st.world.collide(e.pos, e.radius, true);
+      st.fgroup.add(e.root);
+      e.syncModel(0);
+      st.enemies.push(e);
+      if (!here) {
+        // the player has moved on again: it waits on that floor's landing
+        e.setState('search');
+        return false;
+      }
+      e.lastSeen.copy(p.pos);
+      e.foe = null;
+      if (e.type === 'brute') {
+        e.setState('charge');
+        e.target = p.pos.clone();
+        e.lastHeard = g.time;
+      } else e.setState('chase');
+      g.audio.growl(e.voice, e.pos, 1.2);
+      arrived++;
+      return false;
+    });
+    if (arrived && g.time - (this.followMsgT ?? -99) > 4) {
+      this.followMsgT = g.time;
+      g.ui.message(`They followed you ${this.lastStairDir < 0 ? 'down' : 'up'} the stairs!`, 'bad', 3.5);
+    }
+  }
+
   // Move everyone following the player to where they arrive on a floor.
   bringCompanions(x, z) {
     this.actors.forEach((a, i) => {
@@ -768,6 +1070,9 @@ export class BuildingScene {
       return false;
     });
     this.enemyInteractions();
+    this.updateBoards(dt);
+    this.updateNest(dt);
+    this.updateIncoming(dt);
     for (const a of this.actors) a.update(dt);
     for (const f of this.found) f.update(dt);
     this.updateTraps(dt);

@@ -179,7 +179,9 @@ export class World {
   }
   isOpenSky(x, z) {
     if (this.outdoor) return true;
-    return this.t(Math.floor(x / TILE), Math.floor(z / TILE)) === T.YARD;
+    const tx = Math.floor(x / TILE);
+    const ty = Math.floor(z / TILE);
+    return this.t(tx, ty) === T.YARD || !!this.d.sky?.has(ty * this.W + tx);
   }
   walkableForMonster(x, y) {
     const t = this.t(x, y);
@@ -241,7 +243,7 @@ export class World {
         const st = style(room);
         const fb = yard ? batches.yard : t === T.PIT ? batches.pit : st?.floor ? batchFor(st.floor) : batches.floor;
         fb.quad([x0, fy, z0], [x0, fy, z1], [x1, fy, z1], [x1, fy, z0], [0, 1, 0]);
-        if (!yard) batches.ceil.quad([x0, WALL_H, z0], [x1, WALL_H, z0], [x1, WALL_H, z1], [x0, WALL_H, z1], [0, -1, 0]);
+        if (!yard && !d.sky?.has(y * this.W + x)) batches.ceil.quad([x0, WALL_H, z0], [x1, WALL_H, z0], [x1, WALL_H, z1], [x0, WALL_H, z1], [0, -1, 0]);
         if (yard) continue; // the lot is open: fences and the facade are props
         const wb = st?.wall ? batchFor(st.wall) : room > 0 && room % 3 === 0 ? batches.wall2 : batches.wall;
         for (const [fx, fz] of [

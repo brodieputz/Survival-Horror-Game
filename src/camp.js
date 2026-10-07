@@ -32,7 +32,7 @@ const SPAWN_X0 = 144;
 const SPAWN_X1 = 152;
 const Z_MIN = 3.6;
 const Z_MAX = CH * TILE - 3.6;
-const MAX_ALIVE = 50;
+const MAX_ALIVE = 70;
 
 export class CampScene {
   constructor(game) {
@@ -718,7 +718,9 @@ export class CampScene {
   startWave(comp) {
     this.setGate(false);
     this.setDefend(true);
-    this.wave = { ...comp, active: true, spawned: 0, total: comp.list.length, nextT: 2.5, killed: 0 };
+    // every so often a surge: a big rush along several lanes at once
+    const every = comp.bloodMoon ? 28 : Math.max(30, 60 - comp.wave * 3);
+    this.wave = { ...comp, active: true, spawned: 0, total: comp.list.length, nextT: 2.5, killed: 0, nextSurge: comp.wave >= 2 ? every : Infinity, surgeEvery: every };
   }
 
   spawnZombie(type, x, z, mul) {
@@ -733,6 +735,18 @@ export class CampScene {
     if (!w || !w.active) return;
     const alive = this.enemies.filter((e) => e.alive).length;
     w.nextT -= dt;
+    if (w.spawned >= w.nextSurge && w.spawned < w.total && alive < MAX_ALIVE - 10) {
+      w.nextSurge += w.surgeEvery;
+      const n = Math.min(w.total - w.spawned, 10 + Math.floor(w.wave * 1.5) + (w.bloodMoon ? 8 : 0));
+      const lanes = [0, 1, 2].map(() => this.rng.range(Z_MIN + 3, Z_MAX - 3));
+      for (let i = 0; i < n; i++) {
+        const e = this.spawnZombie(w.list[w.spawned++], this.rng.range(SPAWN_X0, SPAWN_X1 + 6), clamp(lanes[i % 3] + this.rng.range(-4, 4), Z_MIN, Z_MAX), { hp: w.hpMul, spd: w.spdMul, dmg: w.dmgMul });
+        e.frenzy = 8;
+      }
+      this.game.audio.horn();
+      this.game.ui.message(w.bloodMoon ? 'The red night howls — a surge pours out of the dark!' : 'A SURGE — a mass of them rushes the barricade!', 'bad', 4);
+      w.nextT = 4;
+    }
     if (w.spawned < w.total && w.nextT <= 0 && alive < MAX_ALIVE) {
       const group = Math.min(w.total - w.spawned, 2 + Math.floor(Math.random() * Math.min(6, 1 + w.wave / 2)));
       const zc = w.firstZ ?? this.rng.range(Z_MIN + 3, Z_MAX - 3);

@@ -16,11 +16,13 @@ export const ZOMBIES = {
   armored: { name: 'Riot Zombie', hp: 170, radius: 0.44, walk: 1.4, run: 3.2, wave: 2.5, sight: 0.9, fov: 2.0, stride: 1.4, dmg: 18, bdmg: 14, cd: 1.2, reach: 2.0, armor: 0.55, xp: 5 },
   crawler: { name: 'Crawler', hp: 35, radius: 0.35, walk: 1.2, run: 2.8, wave: 2.9, sight: 0.6, fov: 2.0, stride: 0.9, dmg: 8, bdmg: 5, cd: 0.9, reach: 1.5, xp: 1 },
   hound: { name: 'Blood Hound', hp: 32, radius: 0.32, walk: 2.6, run: 5.9, wave: 6.6, sight: 1.25, fov: 2.4, stride: 0.55, dmg: 9, bdmg: 5, cd: 0.75, reach: 1.6, xp: 2 },
+  spitter: { name: 'Spitter', hp: 70, radius: 0.38, walk: 1.1, run: 3.2, wave: 2.4, sight: 1.15, fov: 2.3, stride: 1.2, dmg: 9, bdmg: 6, cd: 1.2, reach: 1.8, xp: 3, spit: { range: 15, min: 3.5, cd: 3.2, dmg: 12 } },
+  lurker: { name: 'Lurker', hp: 85, radius: 0.4, walk: 1.0, run: 4.8, wave: 3.4, sight: 0.9, fov: 2.0, stride: 1.3, dmg: 22, bdmg: 10, cd: 1.0, reach: 1.9, xp: 3 },
   brute: { name: 'Blind Brute', hp: 650, radius: 0.75, walk: 1.6, run: 4.9, wave: 2.1, sight: 0, fov: 0, stride: 2.1, dmg: 42, bdmg: 55, cd: 1.7, reach: 2.4, xp: 15 },
 };
 
 // Which of the original sound-sets each zombie uses.
-const VOICE = { walker: 'grunt', runner: 'grunt', grunt: 'grunt', fat: 'brute', rotter: 'grunt', armored: 'grunt', crawler: 'grunt', hound: 'hound', brute: 'brute' };
+const VOICE = { walker: 'grunt', runner: 'grunt', grunt: 'grunt', fat: 'brute', rotter: 'grunt', armored: 'grunt', crawler: 'grunt', hound: 'hound', spitter: 'grunt', lurker: 'grunt', brute: 'brute' };
 
 let seedCounter = 1;
 
@@ -52,7 +54,8 @@ export class Enemy {
       if (o.isMesh) o.userData.enemy = this;
     });
     (opts.group || game.level.group).add(this.root);
-    this.state = this.mode === 'wave' ? 'march' : 'patrol';
+    this.state = this.mode === 'wave' ? 'march' : type === 'lurker' && !opts.awake ? 'dormant' : 'patrol';
+    this.spitCd = 1 + Math.random() * 2;
     this.stateT = 0;
     this.path = null;
     this.pathI = 0;
@@ -177,6 +180,14 @@ export class Enemy {
   hear(n) {
     if (!this.alive || this.stun > 0 || this.mode === 'wave') return;
     if (this.state === 'fight') return;
+    if (this.trapped) {
+      if (dist2D(this.pos.x, this.pos.z, n.x, n.z) < n.r * 0.85) this.game.level.rouseBoards?.();
+      return;
+    }
+    if (this.state === 'dormant') {
+      if (dist2D(this.pos.x, this.pos.z, n.x, n.z) < Math.min(6, n.r * 0.5)) this.wake();
+      return;
+    }
     const mult = this.type === 'brute' ? (n.kind === 'glass' ? 2.0 : 1.5) : this.type === 'hound' ? 1.0 : 0.85;
     const d = dist2D(this.pos.x, this.pos.z, n.x, n.z);
     if (d > n.r * mult) return;
@@ -202,7 +213,7 @@ export class Enemy {
 
   // Alerted by a hound's shriek. spot = hiding spot the hound has found.
   alerted(x, z, spot) {
-    if (!this.alive || this.stun > 0 || this.state === 'fight') return;
+    if (!this.alive || this.stun > 0 || this.state === 'fight' || this.state === 'dormant' || this.trapped) return;
     if (this.mode === 'wave') {
       this.frenzy = 7;
       return;
@@ -292,7 +303,7 @@ export class Enemy {
     const lvl = this.game.level;
     const rooms = lvl.d.rooms;
     for (let a = 0; a < 8; a++) {
-      const r = rooms[1 + Math.floor(Math.random() * (rooms.length - 1))];
+      const r = this.confine != null ? rooms[this.confine] : rooms[1 + Math.floor(Math.random() * (rooms.length - 1))];
       if (!r) break;
       const x = (r.x + 0.5 + Math.random() * (r.w - 1)) * 3;
       const z = (r.y + 0.5 + Math.random() * (r.h - 1)) * 3;
@@ -326,6 +337,10 @@ export class Enemy {
       return;
     }
     const byHuman = src && typeof src === 'object';
+    if (this.state === 'dormant' || this.state === 'rise') {
+      this.wake();
+      return;
+    }
     if (this.type === 'brute') {
       this.enraged = 6;
       g.audio.growl('brute', this.pos, 1.3);
@@ -382,6 +397,33 @@ export class Enemy {
     return true;
   }
 
+  // A lurker lying among the dead gets up.
+  wake() {
+    if (this.state !== 'dormant') return;
+    this.setState('rise');
+    this.game.audio.growl(this.voice, this.pos, 1.4);
+    if (!this.game.anyHunting()) this.game.audio.stinger();
+  }
+
+  // Lob a glob of bile at someone. lob = a high arc (over the barricade).
+  spit(target, lob = false) {
+    const g = this.game;
+    const from = new THREE.Vector3(this.pos.x, this.model.height * 0.85, this.pos.z);
+    const d = dist2D(this.pos.x, this.pos.z, target.pos.x, target.pos.z);
+    const T = lob ? 1.0 + d * 0.035 : 0.4 + d * 0.035;
+    const err = 0.25 + d * 0.04;
+    const tx = target.pos.x + (Math.random() - 0.5) * err * 2;
+    const tz = target.pos.z + (Math.random() - 0.5) * err * 2;
+    const grav = 9.8;
+    const ty = 0.9;
+    const vel = new THREE.Vector3((tx - from.x) / T, (ty - from.y + 0.5 * grav * T * T) / T, (tz - from.z) / T);
+    g.combat.spawn('acid', from, vel, { grav, dmg: this.s.spit.dmg * this.mul.dmg, src: this, splash: 0 });
+    g.audio.swipe(this.pos);
+    this.jaw = 1;
+    this.attackAnim = 0.6;
+    this.spitCd = this.s.spit.cd * (0.85 + Math.random() * 0.4);
+  }
+
   startShriek() {
     this.setState('shriek');
     this.shriekCd = 7;
@@ -433,6 +475,12 @@ export class Enemy {
       return;
     }
 
+    this.spitCd -= dt;
+    if (this.state === 'dormant' || this.state === 'rise') {
+      this.updateLurker(dt);
+      this.syncModel(dt);
+      return;
+    }
     if (this.mode === 'wave') this.updateWave(dt);
     else if (this.type === 'brute') this.updateBrute(dt);
     else this.updateSighted(dt);
@@ -466,6 +514,16 @@ export class Enemy {
       for (const e of camp.enemies) if (e.alive && dist2D(e.pos.x, e.pos.z, this.pos.x, this.pos.z) < 45) e.frenzy = 7;
       this.jaw = 1;
       g.ui.message('A Blood Hound shrieks — the horde surges forward!', 'bad');
+    }
+    if (this.s.spit && camp.barricadeUp && this.pos.x - camp.bx < 17) {
+      // spitters hang back from the barricade and lob bile at the defenders
+      const t = this.nearestHuman(34);
+      if (t) {
+        this.speedNow = 0;
+        this.face(t.pos.x, t.pos.z, dt, 8);
+        if (this.spitCd <= 0) this.spit(t, true);
+        return;
+      }
     }
     if (camp.barricadeUp) {
       const gap = this.pos.x - camp.bx;
@@ -594,6 +652,20 @@ export class Enemy {
           this.shriekCd = 8;
           this.doShriek(null);
         }
+        if (this.s.spit && seesP && d > this.s.spit.min && d < this.s.spit.range) {
+          // keep its distance and spit; shuffle sideways between globs
+          this.face(p.pos.x, p.pos.z, dt, 10);
+          this.windup = 0;
+          if (this.spitCd <= 0) this.spit(p);
+          else if (this.spitCd > 0.8) {
+            const side = Math.sin(this.phase * 0.3 + this.stateT) > 0 ? 1 : -1;
+            const nx = (p.pos.z - this.pos.z) / d;
+            const nz = -(p.pos.x - this.pos.x) / d;
+            this.stepToward(nx * side, nz * side, this.s.walk * dt, dt);
+            this.yaw = dampAngle(this.yaw, Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z), 10, dt);
+          } else this.speedNow = 0;
+          break;
+        }
         const range = isHound ? 1.25 : this.s.reach * 0.78;
         if (d < range && seesP) {
           this.face(p.pos.x, p.pos.z, dt, 14);
@@ -681,6 +753,61 @@ export class Enemy {
       case 'stunned':
         this.setState('search');
         break;
+      case 'bang':
+        this.updateBang(dt);
+        break;
+    }
+  }
+
+  // Shut in behind a boarded door: batter the boards until they give.
+  updateBang(dt) {
+    const bd = this.game.level.boards;
+    if (!bd || bd.broken || !this.trapped) {
+      this.trapped = false;
+      this.setState('search');
+      return;
+    }
+    const tx = bd.x + bd.dx * 0.75;
+    const tz = bd.z + bd.dy * 0.75;
+    const d = dist2D(this.pos.x, this.pos.z, tx, tz);
+    if (d > 1.2) {
+      this.goTo(tx, tz, this.s.walk * 1.6 * this.mul.spd, dt, 0.9);
+      if (this.stateT > 10 && this.speedNow < 0.05) this.stateT = 0;
+      if (d > 2.2 || this.speedNow > 0.05) return;
+    }
+    this.speedNow = 0;
+    this.face(bd.x, bd.z, dt, 8);
+    if (this.attackCd <= 0) {
+      this.windup += dt;
+      this.attackAnim = Math.min(1, this.windup * 2.5);
+      if (this.windup > 0.4) {
+        this.windup = 0;
+        this.attackCd = this.s.cd * (1.1 + Math.random() * 0.4);
+        this.attackAnim = 1;
+        this.game.level.damageBoards(this.s.bdmg * 0.6, this);
+      }
+    }
+  }
+
+  // Lurkers lie still among the bodies until someone comes too close.
+  updateLurker(dt) {
+    const g = this.game;
+    this.speedNow = 0;
+    if (this.state === 'dormant') {
+      const near = this.nearestHuman(3.2);
+      if (near && g.level.world.los(this.pos.x, this.pos.z, near.pos.x, near.pos.z)) {
+        this.foe = near === g.player ? null : near;
+        this.wake();
+      }
+      return;
+    }
+    // rising
+    const f = this.foe || g.player;
+    this.face(f.pos.x, f.pos.z, dt, 6);
+    if (this.stateT > 0.85) {
+      this.lastSeen.copy(f.pos);
+      this.attackCd = 0;
+      this.setState('chase');
     }
   }
 
@@ -901,6 +1028,16 @@ export class Enemy {
     this.root.position.z = this.pos.z;
     this.root.position.y = 0;
     this.root.rotation.y = this.yaw;
+    if (this.state === 'dormant' || this.state === 'rise') {
+      const e = this.state === 'dormant' ? 1 : Math.max(0, 1 - this.stateT / 0.85) ** 2;
+      this.root.rotation.order = 'YXZ';
+      this.root.rotation.x = -e * 1.45;
+      this.root.position.y = e * 0.12;
+      m.jaw.rotation.x = this.state === 'rise' ? 0.5 : 0.3;
+      for (const arm of m.arms) arm.sh.rotation.x = -1.2 * e - (1 - e) * 1.0;
+      return;
+    }
+    this.root.rotation.x = 0;
     if (this.state === 'dead') {
       const t = Math.min(1, this.deadT / 0.7);
       const e = t * t;
@@ -950,6 +1087,7 @@ export class Enemy {
     m.jaw.rotation.x = Math.max(this.jaw, atk * 0.5) * 0.6;
     if (m.tail) m.tail.rotation.y = Math.sin(t * 9) * 0.4;
     if (m.quad) m.head.rotation.x = -this.jaw * 0.5;
+    if (m.spit) m.spit.scale.setScalar(1 + Math.max(0, 1 - this.spitCd) * 0.35 + Math.sin(t * 3) * 0.04);
   }
 
   dispose() {}
