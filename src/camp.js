@@ -13,6 +13,7 @@ import { Enemy } from './enemies.js';
 import { SurvivorActor } from './survivors.js';
 import { RNG, dist2D, clamp, angleDiff } from './util.js';
 import { TILE, T, TURRETS, TRAPS } from './config.js';
+import { mul as perkMul } from './perks.js';
 import { tex } from './textures.js';
 import * as M from './models.js';
 import * as P from './props.js';
@@ -492,13 +493,21 @@ export class CampScene {
     this.run.placedTraps = this.run.placedTraps.filter((t) => t !== rt.rec);
   }
 
+  // Traps go anywhere on open ground: out in the field, along the
+  // barricade or in among the tents. Only the dead set them off.
   canPlaceTrap(type, x, z, px, pz) {
-    if (px < BX + 1.0) return 'Head out through the gate to set traps.';
     if (Math.hypot(x - px, z - pz) > 4.5) return 'Too far away. Walk closer.';
-    if (x < BX + 2.5 || x > 140 || z < Z_MIN || z > Z_MAX) return 'Traps go beyond the barricade.';
+    if (x < 2 || x > 140 || z < Z_MIN || z > Z_MAX) return 'Too close to the edge of the camp.';
+    if (Math.abs(x - BX) < (type === 'tripwire' ? 1.4 : 1.0)) return 'Not on the barricade itself.';
     if (type === 'tripwire' && (z - 3 < Z_MIN - 1.5 || z + 3 > Z_MAX + 1.5)) return 'Not enough room for the wire.';
     for (const t of this.traps) if (t.armed && dist2D(t.rec.x, t.rec.z, x, z) < (type === 'tripwire' || t.rec.type === 'tripwire' ? 2.2 : 1.3)) return 'Too close to another trap.';
     for (const c of this.cover) if (!c.soft && dist2D(c.x, c.z, x, z) < c.r + 0.6) return 'Something is in the way.';
+    // the train, the tent, the fire, the rack...
+    const r = type === 'kerosene' ? 0.5 : 0.35;
+    const w = this.world;
+    for (let ty = Math.floor((z - 2) / TILE); ty <= Math.floor((z + 2) / TILE); ty++)
+      for (let tx = Math.floor((x - 2) / TILE); tx <= Math.floor((x + 2) / TILE); tx++)
+        for (const b of w.props.get(ty * w.W + tx) || []) if (x > b.minX - r && x < b.maxX + r && z > b.minZ - r && z < b.maxZ + r) return 'Something is in the way.';
     return null;
   }
 
@@ -520,7 +529,7 @@ export class CampScene {
     if (!rt.armed) return;
     this.consumeTrap(rt);
     this.group.remove(rt.model);
-    this.game.combat.explode(new THREE.Vector3(rt.rec.x, 0.6, rt.rec.z), 5.5, 210, 'trap', { fire: true });
+    this.game.combat.explode(new THREE.Vector3(rt.rec.x, 0.6, rt.rec.z), 5.5, 210 * perkMul(this.run, 'trapDmgMul'), 'trap', { fire: true });
   }
 
   shootables() {
@@ -541,7 +550,7 @@ export class CampScene {
     if (!t.armed) return;
     this.consumeTrap(t);
     this.group.remove(t.model);
-    this.game.combat.explode(new THREE.Vector3(t.rec.x, 0.3, t.rec.z), 4.5, 230, 'trap');
+    this.game.combat.explode(new THREE.Vector3(t.rec.x, 0.3, t.rec.z), 4.5, 230 * perkMul(this.run, 'trapDmgMul'), 'trap');
   }
 
   updateTraps(dt) {
@@ -569,7 +578,7 @@ export class CampScene {
             this.consumeTrap(t);
             M.setBearTrapOpen(t.jaws, false);
             g.audio.bearSnap(e.pos);
-            e.trap(e.type === 'brute' ? 4 : 7, e.type === 'brute' ? 70 : 50, 'trap');
+            e.trap(e.type === 'brute' ? 4 : 7, (e.type === 'brute' ? 70 : 50) * perkMul(this.run, 'trapDmgMul'), 'trap');
             break;
           }
         } else if (t.rec.type === 'mine') {
@@ -585,7 +594,7 @@ export class CampScene {
             g.audio.spikes(e.pos);
             for (const o of this.enemies)
               if (o.alive && Math.abs(o.pos.x - t.rec.x) < 1.4 && Math.abs(o.pos.z - t.rec.z) < 3.3) {
-                o.hit(150, 'trap', { explosive: false });
+                o.hit(150 * perkMul(this.run, 'trapDmgMul'), 'trap', { explosive: false });
                 if (o.alive) o.stun = Math.max(o.stun, 1.2);
               }
             break;
@@ -636,16 +645,17 @@ export class CampScene {
       t.model.pitch.rotation.x = pitch;
       t.cd -= dt;
       if (Math.abs(diff) > 0.12 || t.cd > 0) continue;
-      t.cd = 1 / t.def.rate;
+      t.cd = 1 / (t.def.rate * perkMul(this.run, 'turretRateMul'));
       t.flash = 1;
+      const tdmg = t.def.dmg * perkMul(this.run, 'turretDmgMul');
       const muzzle = t.model.muzzle.getWorldPosition(new THREE.Vector3());
       if (t.type === 'mg') {
-        g.combat.aimedShot(muzzle, tg, { dmg: t.def.dmg, hitChance: 0.72, src: 'turret', color: 0xffe0a0, headChance: 0.1 });
+        g.combat.aimedShot(muzzle, tg, { dmg: tdmg, hitChance: 0.72, src: 'turret', color: 0xffe0a0, headChance: 0.1 });
         g.audio.turretFire('mg', muzzle);
       } else if (t.type === 'missile') {
         const v = new THREE.Vector3(tg.pos.x, 1, tg.pos.z).sub(muzzle).normalize().multiplyScalar(14);
         v.y += 8;
-        g.combat.spawn('missile', muzzle, v, { target: tg, speed: 34, dmg: t.def.dmg, splash: t.def.splash, src: 'turret' });
+        g.combat.spawn('missile', muzzle, v, { target: tg, speed: 34, dmg: tdmg, splash: t.def.splash, src: 'turret' });
         g.audio.turretFire('missile', muzzle);
       } else {
         const T2 = clamp(dist / 28, 1.4, 3.2);
@@ -653,7 +663,7 @@ export class CampScene {
         const lead = tg.speedNow * T2 * 0.8;
         const tx = tg.pos.x - lead;
         const v = new THREE.Vector3((tx - muzzle.x) / T2, (0 - muzzle.y + 0.5 * grav * T2 * T2) / T2, (tg.pos.z - muzzle.z) / T2);
-        g.combat.spawn('shell', muzzle, v, { grav, dmg: t.def.dmg, splash: t.def.splash, src: 'turret' });
+        g.combat.spawn('shell', muzzle, v, { grav, dmg: tdmg, splash: t.def.splash, src: 'turret' });
         g.audio.turretFire('artillery', muzzle);
       }
     }
@@ -798,7 +808,7 @@ export class CampScene {
     out.push({ type: 'maptable', x: this.table.x, z: this.table.z, label: 'Study the maps', range: 2.3 });
     if (g.run.phase === 'day') out.push({ type: 'campfire', x: 26, z: 22, label: 'Rest by the fire (pass time)', range: 2.4 });
     out.push({ type: 'rack', x: this.rack.x, z: this.rack.z, label: 'Weapon rack & workbench', range: 2.4 });
-    if (day) out.push({ type: 'trapcrate', x: this.trapCrate.x, z: this.trapCrate.z, label: 'Take traps (then head out through the gate)', range: 2.2 });
+    if (day) out.push({ type: 'trapcrate', x: this.trapCrate.x, z: this.trapCrate.z, label: 'Set traps', range: 2.2 });
     const p = g.player;
     if (p.pos.x < BX + 2.5) {
       const bz = clamp(p.pos.z, 2, CH * TILE - 2);

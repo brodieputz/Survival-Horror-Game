@@ -21,8 +21,9 @@ import { setAnisotropy } from './textures.js';
 import { makeBearTrap } from './models.js';
 import { makeMine, makeTripSpikes, makeKeroseneTank } from './props.js';
 import { TRAVEL_HOURS, BARRICADE, TURRETS, TRAPS, TRAP_ORDER } from './config.js';
-import { WEAPONS, upgradeCost, UPG_MAX } from './weapons.js';
+import { WEAPONS, UPG_MAX } from './weapons.js';
 import * as R from './run.js';
+import { mul as perkMul, add as perkAdd, takePerk } from './perks.js';
 import { damp, dist2D, clamp } from './util.js';
 
 const SETTINGS_KEY = 'dreaddepths.settings';
@@ -72,7 +73,7 @@ class Game {
     this.scene.add(sun, sun.target);
     this.env = new Environment(this);
     this.pipeline = new Pipeline(r, this.scene, this.camera);
-    const fl = (this.flashlight = new THREE.SpotLight(0xfff0d2, 65, 32, 0.46, 0.5, 1.35));
+    const fl = (this.flashlight = new THREE.SpotLight(0xfff0d2, 65, 32, 0.46, 0.72, 1.35));
     fl.position.set(-0.22, -0.22, -0.7);
     fl.target.position.set(0.0, -0.15, -8);
     fl.castShadow = true;
@@ -296,14 +297,15 @@ class Game {
 
   enterLocation(loc, compIds) {
     const run = this.run;
-    if (run.phase !== 'day' || run.hours < loc.hours || loc.searched || loc.claimed) return;
-    run.hours -= loc.hours;
+    if (run.phase !== 'day' || run.hours < R.searchHours(run, loc) || loc.searched || loc.claimed) return;
+    run.hours -= R.searchHours(run, loc);
     const comps = compIds.map((id) => run.survivors.find((s) => s.id === id)).filter((s) => s && s.status === 'camp' && s.hp > 0);
     this.trip = { loc, found: [], recruits: [], kills: 0, lost: [] };
     this.closePanel(false);
     this.transition(() => {
       this.disposeLevel();
       new BuildingScene(this, loc, comps);
+      const lvlNow = this.level;
       const p = this.player;
       p.resetTransient();
       p.spawn(this.level.d.spawn);
@@ -313,6 +315,7 @@ class Game {
       const L = R.LOCATION_TYPES[loc.type];
       const floors = this.level.nFloors > 1 ? ` · ${this.level.nFloors} floors` : '';
       this.ui.banner(loc.name.toUpperCase(), `${L.name}${floors} · danger ${'☠'.repeat(loc.difficulty)}`, 3.5);
+      if (loc.raiders) setTimeout(() => this.level === lvlNow && this.ui.message('Voices inside, and the click of a rifle bolt. Raiders hold this place.', 'bad', 5), 4500);
       this.audio.setMode('explore');
       this.input.lock();
       this.playShot(this.arrivalShot());
@@ -329,7 +332,9 @@ class Game {
       () => {
         this.combat.clear();
         const followers = lvl.takeFollowers();
+        lvl.parkCompanions(lvl.floorIdx);
         lvl.setFloor(to);
+        lvl.unparkCompanions();
         lvl.queueFollowers(followers, to);
         lvl.lastStairDir = dir;
         const p = this.player;
@@ -498,7 +503,7 @@ class Game {
             lines.push({ kind: 'muted', text: 'A bitter night. The stove burned 1 coal.' });
           } else {
             lines.push({ kind: 'bad', text: 'A bitter night with no coal for the stove. Everyone is weaker from the cold.' });
-            run.player.hp = Math.max(1, run.player.hp - R.playerMaxHp(run.player.level) * 0.15);
+            if (!perkAdd(run, 'coldProof')) run.player.hp = Math.max(1, run.player.hp - R.playerMaxHp(run.player.level) * 0.15);
             for (const s of run.survivors) if (s.status !== 'dead') s.hp = Math.max(1, s.hp - R.survivorMaxHp(s) * 0.15);
           }
         }
@@ -520,8 +525,16 @@ class Game {
         }
         const meal = R.dailyRations(run);
         lines.push(...meal.lines);
+        // doctors, carpenters and the Bedside Manner perk do their rounds
+        const barWasDown = run.barricade.hp <= 0;
+        lines.push(...R.dawnCare(run));
+        const rebuiltBar = barWasDown && run.barricade.hp > 0;
         if (rebuild) this.enterCamp('tent');
         else camp.clearNight();
+        if (rebuiltBar && !rebuild) {
+          this.level.buildBarricade();
+          this.level.computeFlow();
+        }
         this.level.spawnSurvivors();
         this.level.setGate(true);
         this.combat.clear();
@@ -551,7 +564,7 @@ class Game {
   travelTo(i) {
     const run = this.run;
     const opt = run.region.options[i];
-    if (!opt || run.coal < opt.coal || run.phase !== 'day' || run.hours < TRAVEL_HOURS) return;
+    if (!opt || run.coal < R.tripCoal(run, opt) || run.phase !== 'day' || run.hours < TRAVEL_HOURS) return;
     if (run.survivors.some((s) => s.status === 'away')) return;
     this.closePanel(false);
     run.hours -= TRAVEL_HOURS;
@@ -696,6 +709,7 @@ class Game {
       this.level.refreshRack();
       this.level.refreshSurvivorGear();
     }
+    if (this.level?.kind === 'building') for (const a of this.level.party) a.equip();
   }
 
   panelAction(act, ds) {
@@ -740,7 +754,7 @@ class Game {
         const def = WEAPONS[inst.id];
         inst.up = inst.up || {};
         const lv = inst.up[ds.key] || 0;
-        const cost = upgradeCost(def, lv);
+        const cost = R.upgCost(run, def, lv);
         if (lv >= UPG_MAX || run.scrap < cost) break;
         run.scrap -= cost;
         inst.up[ds.key] = lv + 1;
@@ -751,6 +765,7 @@ class Game {
       case 'heal': {
         const s = survivor(P.arg);
         if (!s || run.medkits <= 0) break;
+        if (s.hp >= R.survivorMaxHp(s)) break;
         const max = R.survivorMaxHp(s);
         run.medkits--;
         s.hp = Math.min(max, s.hp + Math.round(max * 0.6));
@@ -772,13 +787,57 @@ class Game {
         this.audio.click(0.5);
         break;
       }
+      case 'cmp':
+        P.cmp = +ds.slot;
+        break;
+      case 'perksel':
+        P.sel = ds.id;
+        break;
+      case 'perktake': {
+        if (!P.sel || !takePerk(run, P.sel)) break;
+        this.audio.buy();
+        this.afterPerk();
+        break;
+      }
+      case 'sqorder': {
+        const a = this.level?.actors?.find((x) => x.rec.id === P.arg);
+        if (!a) break;
+        a.order(ds.mode);
+        this.ui.message(ds.mode === 'stay' ? `${a.name} will stay here.` : `${a.name} follows you.`, 'dim', 2.5);
+        this.closePanel();
+        return;
+      }
+      case 'sqswap': {
+        // trade the weapon in one of your hands for theirs
+        const s = survivor(P.arg);
+        if (!s || s.dog) break;
+        const key = +ds.slot === 0 ? 'primary' : 'secondary';
+        const mine = run.loadout[key];
+        const theirs = s.weapon;
+        if (mine == null && theirs == null) break;
+        s.weapon = mine;
+        run.loadout[key] = theirs;
+        this.afterGearChange();
+        this.audio.click(0.6);
+        break;
+      }
+      case 'sqgive': {
+        // hand over something found on this trip; theirs goes in your pack
+        const s = survivor(P.arg);
+        if (!s || s.dog) break;
+        R.unassign(run, +ds.uid);
+        s.weapon = +ds.uid;
+        this.afterGearChange();
+        this.audio.click(0.6);
+        break;
+      }
       case 'repair': {
         const b = run.barricade;
         const max = R.barricadeMax(run);
         let want = ds.amt === 'all' ? max - b.hp : Math.min(60, max - b.hp);
-        const cost = Math.min(run.scrap, Math.ceil(want / BARRICADE.hpPerScrap));
+        const cost = Math.min(run.scrap, Math.ceil(want / R.hpPerScrap(run)));
         if (cost <= 0) break;
-        want = Math.min(want, cost * BARRICADE.hpPerScrap);
+        want = Math.min(want, cost * R.hpPerScrap(run));
         const wasDown = b.hp <= 0;
         run.scrap -= cost;
         b.hp = Math.min(max, b.hp + want);
@@ -791,7 +850,7 @@ class Game {
       }
       case 'improve': {
         const b = run.barricade;
-        const cost = BARRICADE.improveCost(b.level);
+        const cost = R.reinforceCost(run);
         if (b.level >= BARRICADE.maxLevel || run.scrap < cost) break;
         run.scrap -= cost;
         b.level++;
@@ -881,7 +940,7 @@ class Game {
     }
     this.placing = { type, error: null, ok: false };
     this.makeGhost();
-    this.ui.message(this.player.pos.x < this.level.bx + 1 ? 'Walk out through the gate, then aim at the ground near you and click to set a trap.' : 'Aim at the ground near you and click to set a trap.', 'dim', 5);
+    this.ui.message('Aim at the ground near you and click to set a trap: in the field, along the barricade or inside the camp.', 'dim', 5);
   }
 
   makeGhost() {
@@ -1001,19 +1060,18 @@ class Game {
     const xp = e.s.xp;
     if (src === this.player) {
       run.player.kills++;
-      const lv = R.grantXp(run.player, xp);
-      if (lv) {
-        this.player.health = Math.min(this.player.maxHealth, this.player.health + 10 * lv);
-        this.ui.message(`LEVEL UP! You are now level ${run.player.level}.`, 'level', 4);
-        this.audio.buy();
-      }
+      const lv = R.grantXp(run.player, Math.max(1, Math.round(xp * perkMul(run, 'xpMul'))));
+      if (lv) this.onPlayerLevelUp(lv);
+      // Bloodlust / Vampire
+      const ls = perkAdd(run, 'lifesteal');
+      if (ls && info.melee) this.player.health = Math.min(this.player.maxHealth, this.player.health + ls);
     } else if (src && src.rec) {
       src.rec.kills = (src.rec.kills || 0) + 1;
-      const lv = R.grantXp(src.rec, xp);
+      const lv = R.grantXp(src.rec, Math.max(1, Math.round(xp * perkMul(run, 'squadXpMul'))));
       if (lv) {
         src.rec.hp += 10 * lv;
         src.equip();
-        this.ui.message(`${src.rec.name} reached level ${src.rec.level}.`, 'level', 3);
+        this.ui.message(`${R.survivorTitle(src.rec)} reached level ${src.rec.level}.${src.rec.prof && src.rec.prof !== 'citizen' ? ' ' + R.profSkill(src.rec) : ''}`, 'level', 4);
       }
     }
     // explosions can leave the legless still crawling
@@ -1026,6 +1084,24 @@ class Game {
         else if (lvl.kind === 'building') lvl.enemies.push(new Enemy(this, 'crawler', x, z, { group: lvl.fgroup }));
       }, 900);
     }
+  }
+
+  // A perk taken: refresh whatever it changes.
+  afterPerk() {
+    const p = this.player;
+    p.health = Math.min(p.maxHealth, p.health);
+    this.refreshViewModel();
+    if (this.level?.kind === 'camp') this.level.refreshSurvivorGear();
+    R.saveRun(this.run);
+  }
+
+  // A level gained: a little health back, and a perk to pick.
+  onPlayerLevelUp(lv) {
+    const run = this.run;
+    this.player.health = Math.min(this.player.maxHealth, this.player.health + 10 * lv);
+    this.ui.message(`LEVEL UP! You are now level ${run.player.level}. Press P to choose a perk.`, 'level', 5);
+    this.audio.buy();
+    this.perkPromptT = 1.5;
   }
 
   onSurvivorDied(actor) {
@@ -1123,12 +1199,24 @@ class Game {
         else {
           this.handleInteraction();
           if (this.input.wasPressed('KeyT') && this.level.kind === 'camp') this.startPlacing();
+          if (this.input.wasPressed('KeyP')) this.openPanel('perks');
+          if (this.input.wasPressed('KeyG') && this.level.kind === 'building') {
+            const o = this.level.orderAll();
+            if (o) this.ui.message(o === 'stay' ? 'You signal everyone to hold here.' : 'You wave everyone on: follow me.', 'dim', 2.5);
+          }
         }
         if (this.input.wasPressed('KeyM') || this.input.wasPressed('Tab')) this.ui.toggleMap();
       } else {
         this.ui.setPrompt('');
         p.deathT += dt;
         if (p.deathT > 4) this.gameOver();
+      }
+      // a fresh level: offer the perk tree once nothing is hunting you
+      if (this.perkPromptT > 0 && s === 'playing') {
+        this.perkPromptT -= dt;
+        const busy = this.cine || this.placing || this.dawnT > 0 || this.anyHunting() || (this.level.kind === 'camp' && this.run.phase === 'night');
+        if (busy) this.perkPromptT = Math.max(this.perkPromptT, 0.5);
+        else if (this.perkPromptT <= 0 && (this.run.player.perkPoints || 0) > 0) this.openPanel('perks');
       }
       if (this.dawnT > 0) {
         this.dawnT -= dt;
@@ -1230,6 +1318,9 @@ class Game {
         break;
       case 'boards':
         this.level.pryBoards();
+        break;
+      case 'companion':
+        this.openPanel('squad', best.obj.rec.id);
         break;
       case 'tent':
         this.requestSleep();
@@ -1387,6 +1478,29 @@ class Game {
     }
   }
 
+  // How far ahead the beam lands: walls, floor or furniture, up to 6 m.
+  flashlightNear(lvl) {
+    const cam = this.camera;
+    const o = cam.getWorldPosition(this._flO || (this._flO = new THREE.Vector3()));
+    const dir = cam.getWorldDirection(this._flD || (this._flD = new THREE.Vector3()));
+    const w = lvl.world;
+    let d = w.ray3D ? Math.min(6, w.ray3D(o, dir, 6)) : 6;
+    if (w.props) {
+      for (let t = 0.3; t < d; t += 0.25) {
+        const x = o.x + dir.x * t;
+        const y = o.y + dir.y * t;
+        const z = o.z + dir.z * t;
+        if (y > 2.1) continue;
+        const list = w.props.get(Math.floor(z / 3) * w.W + Math.floor(x / 3));
+        if (list && list.some((b) => x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ)) {
+          d = t;
+          break;
+        }
+      }
+    }
+    return d;
+  }
+
   updateLights(dt) {
     const p = this.player;
     const lvl = this.level;
@@ -1405,7 +1519,12 @@ class Game {
     const charge = this.run.player.battery ?? 1;
     let weak = charge > 0.25 ? 1 : 0.35 + 2.6 * charge;
     if (charge < 0.12 && Math.random() < dt * 4) weak *= 0.2;
-    this.flashlight.intensity = lit && p.flashlight ? 65 * fl * weak : 0;
+    // don't blind yourself: a wall or a cupboard right in front of the lens
+    // gets a fraction of the light a far one does (like an eye stopping down)
+    const near = this.flashlightNear(lvl);
+    this.flSurf = damp(this.flSurf ?? near, near, near < this.flSurf ? 14 : 5, dt);
+    const close = clamp(this.flSurf / 4.2, 0.1, 1) ** 1.15;
+    this.flashlight.intensity = lit && p.flashlight ? 65 * fl * weak * close : 0;
     // indoors the beam hangs visibly in the air
     const beamK = this.flashlight.intensity > 0 ? (this.flashlight.intensity / 65) * Math.max(this.env.indoor, lvl.kind === 'camp' ? 0.25 : 0) : 0;
     this.beam.update(dt, this.camera, beamK);

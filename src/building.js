@@ -15,7 +15,8 @@ import { makeContainer, makeWallLamp, makeDebris, CONTAINER_WIDTH, CONTAINER_DEP
 import { buildExterior } from './exterior.js';
 import { makeFurniture, FURN } from './furniture.js';
 import { tex } from './textures.js';
-import { LOCATION_TYPES, describeItem, grantLoot, grantXp } from './run.js';
+import { LOCATION_TYPES, describeItem, grantLoot, grantXp, survivorMaxHp, PROFS, addWeapon } from './run.js';
+import { mul as perkMul, add as perkAdd } from './perks.js';
 import { WEAPONS, RARITY } from './weapons.js';
 
 const HIDE_DIMS = {
@@ -135,7 +136,7 @@ export class BuildingScene {
     this.buildNest();
     this.buildPickups();
     for (const e of d.enemies) {
-      const en = new Enemy(game, e.type, e.x, e.z, { group: this.fgroup });
+      const en = new Enemy(game, e.type, e.x, e.z, { group: this.fgroup, gun: e.gun });
       if (e.trapped) {
         en.trapped = true;
         en.confine = d.boarded.room;
@@ -552,17 +553,17 @@ export class BuildingScene {
     const bd = this.boards;
     if (!bd || bd.broken || bd.roused) return;
     bd.roused = true;
-    this.game.ui.message('Something behind a boarded-up door starts hammering to get out...', 'bad', 4);
+    this.game.ui.message('Something behind a boarded-up door starts hammering on the planks...', 'bad', 4);
   }
 
+  // The dead behind the boards pound on them, but the planks hold: only
+  // the player (or a blast) opens that door.
   damageBoards(amount, src) {
     const bd = this.boards;
     if (!bd || bd.broken) return;
-    bd.hp -= amount;
     bd.shake = 1;
     this.game.audio.barricadeHit(src?.pos || { x: bd.x, y: 1, z: bd.z }, false);
-    this.game.particles.burst(new THREE.Vector3(bd.x, 1.1, bd.z), 4, 0x6a5238, 2);
-    if (bd.hp <= 0) this.breakBoards(false);
+    this.game.particles.burst(new THREE.Vector3(bd.x, 1.1, bd.z), 2, 0x6a5238, 1.2);
   }
 
   pryBoards() {
@@ -684,7 +685,7 @@ export class BuildingScene {
     run.stats.kills++;
     if (src === g.player) {
       const lv = grantXp(run.player, 12);
-      if (lv) g.ui.message(`LEVEL UP! You are now level ${run.player.level}.`, 'level', 4);
+      if (lv) g.onPlayerLevelUp(lv);
     }
     // the nest was built around someone's supplies
     const items = [{ k: 'scrap', n: 4 + this.loc.difficulty * 2 }, { k: 'food', n: 2 + this.rng.int(0, 2) }];
@@ -735,6 +736,30 @@ export class BuildingScene {
     if (n && n.alive && dist2D(pos.x, pos.z, n.x, n.z) < radius + 1) this.hurtNest(120 * (1 - dist2D(pos.x, pos.z, n.x, n.z) / (radius + 1)) + 40, src);
     const bd = this.boards;
     if (bd && !bd.broken && dist2D(pos.x, pos.z, bd.x, bd.z) < radius) this.breakBoards(true);
+  }
+
+  // A raider down: their gun (and what was in their pockets) is yours.
+  raiderDown(e) {
+    const g = this.game;
+    const run = g.run;
+    const def = WEAPONS[e.gunId];
+    if (!def) return;
+    const inst = addWeapon(run, e.gunId);
+    g.trip.found.push({ k: 'weapon', id: e.gunId, weapon: inst });
+    let extra = '';
+    if (def.ammo) {
+      const n = 6 + Math.floor(Math.random() * 14);
+      run.ammo[def.ammo] = (run.ammo[def.ammo] || 0) + n;
+      g.trip.found.push({ k: 'ammo', t: def.ammo, n });
+      extra = ` and ${n} rounds`;
+    }
+    if (Math.random() < 0.4) {
+      const f = 1 + Math.floor(Math.random() * 3);
+      run.food += f;
+      g.trip.found.push({ k: 'food', n: f });
+      extra += ` and ${f} food`;
+    }
+    g.ui.message(`The raider drops a ${def.name}${extra}.`, 'rarity-' + def.rarity, 4);
   }
 
   // Batteries, the key, notes.
@@ -849,6 +874,7 @@ export class BuildingScene {
     for (const h of this.hiding) out.push({ type: 'hide', obj: h, x: h.x, z: h.z, label: h.label, range: 2.0 });
     for (const c of this.containers) if (!c.opened) out.push({ type: 'container', obj: c, x: c.x, z: c.z, label: c.label, range: 2.0 });
     for (const f of this.found) if (f.mode === 'found' && f.alive) out.push({ type: 'recruit', obj: f, x: f.pos.x, z: f.pos.z, label: f.rec.dog ? `Call ${f.name} over` : `Talk to ${f.name}`, range: 2.2 });
+    for (const a of this.actors) if (a.alive) out.push({ type: 'companion', obj: a, x: a.pos.x, z: a.pos.z, label: `${a.dog ? 'Call' : 'Talk to'} ${a.name}${a.mode === 'stay' ? ' (staying put)' : ''}`, range: 1.9 });
     for (const p of this.pickups) if (!p.taken) out.push({ type: 'item', obj: p, x: p.x, z: p.z, label: p.label, range: p.pinned ? 2.0 : 1.8 });
     if (this.stairs) {
       if (this.stairs.up) out.push({ type: 'stairs', dir: 1, x: this.stairs.up.x, z: this.stairs.up.z, label: `Go upstairs (floor ${this.floorIdx + 2})`, range: 2.0 });
@@ -857,7 +883,7 @@ export class BuildingScene {
     const go = this.gateObj;
     if (go && !this.loc.lock.opened) {
       const has = this.game.run.keys.includes(this.loc.lock.id);
-      out.push({ type: 'gate', obj: go, x: go.x - go.dx * 0.6, z: go.z - go.dy * 0.6, label: has ? `Unlock the ${this.loc.lock.vault}` : `Locked (${this.loc.lock.vault})`, range: 2.2 });
+      out.push({ type: 'gate', obj: go, x: go.x - go.dx * 0.6, z: go.z - go.dy * 0.6, label: has ? `Unlock the ${this.loc.lock.vault}` : perkAdd(this.game.run, 'lockpick') ? `Pick the lock (${this.loc.lock.vault})` : `Locked (${this.loc.lock.vault})`, range: 2.2 });
     }
     const bd = this.boards;
     if (bd && !bd.broken) out.push({ type: 'boards', obj: bd, x: bd.x - bd.dx * 0.6, z: bd.z - bd.dy * 0.6, label: 'Pry the boards off (loud)', range: 2.2 });
@@ -872,7 +898,17 @@ export class BuildingScene {
     g.audio.crate(false);
     g.emitNoise(c.x, c.z, NOISE.crate, 'player');
     const list = c.vault ? this.loc.lock.boxes : this.loc.containers;
-    const items = list[c.idx] || [];
+    let items = list[c.idx] || [];
+    // Scavenger perks: more of everything, and the odd bonus med kit
+    if (items.length) {
+      items = items.map((it) => {
+        if (it.k === 'scrap') return { ...it, n: Math.round(it.n * perkMul(run, 'scrapMul')) };
+        if (it.k === 'food') return { ...it, n: it.n + perkAdd(run, 'foodBonus') };
+        if (it.k === 'ammo') return { ...it, n: Math.round(it.n * perkMul(run, 'ammoMul')) };
+        return it;
+      });
+      if (Math.random() < perkAdd(run, 'medkitFind')) items.push({ k: 'medkit', n: 1 });
+    }
     if (!items.length) {
       g.ui.message(this.rng.pick(['Empty. Someone got here first.', 'Nothing but dust.', 'Picked clean.']), 'dim');
       return;
@@ -928,7 +964,9 @@ export class BuildingScene {
   useGate(go) {
     const g = this.game;
     const lock = this.loc.lock;
-    if (!g.run.keys.includes(lock.id)) {
+    const picked = !g.run.keys.includes(lock.id) && perkAdd(g.run, 'lockpick');
+    if (picked) g.ui.message(`You work the lock of the ${lock.vault} with a bent wire... click.`, 'gold', 4);
+    else if (!g.run.keys.includes(lock.id)) {
       lock.seen = true;
       g.audio.click?.(0.5);
       const keyLoc = lock.hint ? g.run.locality.locations.find((l) => l.id === lock.keyAt) : null;
@@ -939,7 +977,7 @@ export class BuildingScene {
     this.openGate();
     g.audio.crate(true);
     g.emitNoise(go.x, go.z, NOISE.crate, 'player');
-    g.ui.message(`The key turns. The ${lock.vault} swings open.`, 'gold', 4);
+    if (!picked) g.ui.message(`The key turns. The ${lock.vault} swings open.`, 'gold', 4);
   }
 
   recruit(actor) {
@@ -951,6 +989,11 @@ export class BuildingScene {
       return;
     }
     actor.rec.status = 'camp';
+    const lvUp = perkAdd(run, 'recruitLv');
+    if (lvUp) {
+      actor.rec.level += lvUp;
+      actor.rec.hp = survivorMaxHp(actor.rec);
+    }
     run.survivors.push(actor.rec);
     run.stats.recruited++;
     this.loc.survivors = this.loc.survivors.filter((s) => s !== actor.rec);
@@ -960,7 +1003,7 @@ export class BuildingScene {
     this.actors.push(actor);
     g.trip.recruits.push(actor.rec.dog ? `${actor.rec.name} the dog` : actor.rec.name);
     g.audio.pickup();
-    g.ui.message(actor.rec.dog ? `${actor.rec.name} the ${actor.rec.look.breed.toLowerCase()} pads over and joins you!` : `${actor.rec.name} (level ${actor.rec.level}) joins you!`, 'good', 4);
+    g.ui.message(actor.rec.dog ? `${actor.rec.name} the ${actor.rec.look.breed.toLowerCase()} pads over and joins you!` : `${actor.name} (level ${actor.rec.level}${actor.rec.prof && actor.rec.prof !== 'citizen' ? ', ' + PROFS[actor.rec.prof].name.toLowerCase() : ''}) joins you!`, 'good', 4);
   }
 
   // The dead hunting the player near the stairs follow them to the next
@@ -1029,10 +1072,45 @@ export class BuildingScene {
     }
   }
 
+  // Companions told to stay put wait on their floor while the player goes
+  // up or down; the others come along.
+  parkCompanions(from) {
+    this.parked = this.parked || [];
+    for (const a of this.actors) {
+      if (a.mode !== 'stay' || !a.alive) continue;
+      a.floor = from;
+      a.root.visible = false;
+      this.parked.push(a);
+    }
+    this.actors = this.actors.filter((a) => !this.parked.includes(a));
+  }
+
+  unparkCompanions() {
+    if (!this.parked?.length) return;
+    const back = this.parked.filter((a) => a.floor === this.floorIdx);
+    for (const a of back) a.root.visible = true;
+    this.parked = this.parked.filter((a) => !back.includes(a));
+    this.actors.push(...back);
+  }
+
+  // Everyone in the party, wherever they are.
+  get party() {
+    return this.actors.concat(this.parked || []);
+  }
+
+  // Order the whole party (G): everyone stays, or everyone follows.
+  orderAll() {
+    const here = this.actors.filter((a) => a.alive);
+    if (!here.length && !this.parked?.length) return null;
+    const stay = here.some((a) => a.mode !== 'stay');
+    for (const a of here) a.order(stay ? 'stay' : 'follow');
+    return stay ? 'stay' : 'follow';
+  }
+
   // Move everyone following the player to where they arrive on a floor.
   bringCompanions(x, z) {
     this.actors.forEach((a, i) => {
-      if (!a.alive) return;
+      if (!a.alive || a.mode === 'stay') return;
       a.pos.set(x + (i % 2 ? 0.9 : -0.9), 0, z + 0.9 + Math.floor(i / 2) * 0.8);
       this.world.collide(a.pos, 0.3);
       a.root?.position.copy(a.pos);

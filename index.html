@@ -268,10 +268,24 @@
   .appraisal { font-size: 19px; margin: 6px 0; line-height: 1.15; }
   .appraisal.small { font-size: 17px; border-top: 1px solid #2a1a10; padding-top: 4px; }
   .ammo-grid small { font-size: 14px; }
-  .tabs .pbtn.on { border-color: var(--gold); color: #fff; }
+  .tabs .pbtn.on, .pbtn.on { border-color: var(--gold); color: #fff; }
   .chip { pointer-events: auto; display: inline-block; border: 1px solid #5a3a20; padding: 1px 8px; margin: 2px; cursor: pointer; font-size: 18px; }
   .chip.on { border-color: #6fd05a; color: #b6e08a; }
   .report div { font-size: 22px; margin: 3px 0; }
+  .stat-row.cmp { grid-template-columns: 120px 1fr 90px 64px; }
+  .cmp-up { color: #6fd05a; } .cmp-down { color: #e0503a; } .cmp-same { color: #7a6a5a; }
+  .cmp-line { margin: 6px 0 2px; font-size: 18px; } .cmp-line .pbtn { font-size: 15px; padding: 0 6px; }
+  .perkpt { color: #ffd84a; margin-left: 8px; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.45; } }
+  .perk-grid { display: grid; gap: 4px 6px; max-width: 1240px; margin: 0 auto; }
+  .perk-head { text-align: center; font-size: 18px; color: var(--gold); border-bottom: 1px solid #5a3a20; padding-bottom: 2px; }
+  .perk-cell { display: flex; flex-direction: column; gap: 3px; min-height: 30px; }
+  .perk { pointer-events: auto; font-family: var(--mono); font-size: 14px; line-height: 1.1; padding: 4px 3px; cursor: pointer; border: 1px solid #3a2a1a; background: #120c08; color: #6a5a4a; }
+  .perk.open { color: #b8a890; border-color: #5a3a20; }
+  .perk.can { color: #d8f0c0; border-color: #6fd05a; background: #142210; }
+  .perk.own { color: #1a1206; background: linear-gradient(180deg, #e8c050, #b8862a); border-color: #ffd84a; }
+  .perk.sel { box-shadow: 0 0 0 2px #b3150f; }
+  .perk-detail { max-width: 1240px; margin: 8px auto 0; font-size: 20px; min-height: 30px; }
   .rail-text { font-size: 22px; line-height: 1.35; margin: 4px 0 14px; }
   .rail-opts { display: flex; flex-direction: column; gap: 6px; }
   .rail-opt { text-align: left; width: 100%; }

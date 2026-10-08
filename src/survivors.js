@@ -4,8 +4,9 @@ import * as THREE from 'three';
 import { makeHuman, makeDog } from './actors.js';
 import { makeGunModel } from './gunModels.js';
 import { WEAPONS, weaponStats, isExplosive } from './weapons.js';
-import { survivorSpeed, survivorAim, weaponByUid, removeWeapon, DOG_BITE } from './run.js';
+import { survivorSpeed, survivorAim, weaponByUid, removeWeapon, DOG_BITE, soldierDmg, survivorTitle } from './run.js';
 import { dist2D, dampAngle, angleDiff, clamp } from './util.js';
+import { mul as perkMul } from './perks.js';
 
 const FISTS = { dmg: 9, range: 1.6, rate: 1.3, mag: 0, reload: 0, spread: 0, pellets: 1, def: { cat: 'melee', name: 'Fists', sound: 'melee' } };
 
@@ -17,7 +18,8 @@ export class SurvivorActor {
     this.yaw = Math.random() * 6;
     this.radius = 0.35;
     this.hidden = false;
-    this.mode = mode; // 'camp' | 'defend' | 'follow' | 'found'
+    this.mode = mode; // 'camp' | 'defend' | 'follow' | 'stay' | 'found'
+    this.stayAt = null;
     this.home = { x, z };
     this.post = null;
     this.dog = !!rec.dog;
@@ -48,7 +50,7 @@ export class SurvivorActor {
     return this.rec.status !== 'dead' && this.rec.hp > 0;
   }
   get name() {
-    return this.rec.name;
+    return survivorTitle(this.rec);
   }
 
   equip() {
@@ -76,6 +78,12 @@ export class SurvivorActor {
     this.melee = this.stats.def.cat === 'melee';
     this.explosive = isExplosive(this.stats.def);
     this.flameT = 0;
+  }
+
+  // Damage multiplier from the player's leadership perks (and a dog's bite).
+  dmgMul() {
+    const run = this.game.run;
+    return perkMul(run, 'squadDmgMul') * (this.dog ? perkMul(run, 'dogBiteMul') : 1) * (this.rec.prof === 'soldier' ? soldierDmg(this.rec) : 1);
   }
 
   // ------------------------------------------------------------ health
@@ -204,7 +212,7 @@ export class SurvivorActor {
       this.attackAnim = 1;
       if (this.dog) g.audio.bark?.(this.pos, true);
       else g.audio.swing?.(this.pos);
-      target.hit(s.dmg, this, { melee: true });
+      target.hit(s.dmg * this.dmgMul(), this, { melee: true });
       g.particles.burst(new THREE.Vector3(target.pos.x, 1.1, target.pos.z), 10, 0x7a0000, 2.5);
       return;
     }
@@ -215,7 +223,7 @@ export class SurvivorActor {
     const distF = clamp(1.15 - (d / s.range) * 0.55, 0.35, 1);
     const from = this.muzzlePos();
     for (let i = 0; i < s.pellets; i++)
-      g.combat.aimedShot(from, target, { dmg: s.dmg, hitChance: aim * spreadF * distF * 0.85, src: this });
+      g.combat.aimedShot(from, target, { dmg: s.dmg * this.dmgMul(), hitChance: aim * spreadF * distF * 0.85, src: this });
     g.audio.weaponFire(s.def, this.pos);
     if (this.gun) this.attackAnim = 0.6;
     if (s.mag > 0) {
@@ -237,7 +245,7 @@ export class SurvivorActor {
           this.flameTick = 0.15;
           const from = this.muzzlePos();
           const dir = new THREE.Vector3(target.pos.x - from.x, 0.9 - from.y, target.pos.z - from.z).normalize();
-          g.combat.flame(this, from, dir, { range: s.range, dmg: s.dmg, spread: s.spread });
+          g.combat.flame(this, from, dir, { range: s.range, dmg: s.dmg * this.dmgMul(), spread: s.spread });
           g.audio.weaponFire(def, this.pos);
           this.attackAnim = 0.3;
         }
@@ -263,7 +271,7 @@ export class SurvivorActor {
     const vel = arc
       ? new THREE.Vector3((tx - from.x) / T, (0.3 - from.y + 0.5 * pr.grav * T * T) / T, (tz - from.z) / T)
       : new THREE.Vector3(tx - from.x, 1.0 - from.y, tz - from.z).normalize().multiplyScalar(pr.speed);
-    g.combat.spawn(pr.kind, from, vel, { grav: pr.grav, dmg: s.dmg, splash: s.splash, fuse: pr.fuse || undefined, pierce: s.pierce, src: this });
+    g.combat.spawn(pr.kind, from, vel, { grav: pr.grav, dmg: s.dmg * this.dmgMul(), splash: s.splash, fuse: pr.fuse || undefined, pierce: s.pierce, src: this });
     g.audio.weaponFire(def, this.pos);
     this.attackAnim = 1;
   }
@@ -344,6 +352,32 @@ export class SurvivorActor {
               this.tryAttack(dt, t);
             }
           } else this.navigate(this.home.x, this.home.z, spd, dt, 0.8);
+        }
+        break;
+      }
+      case 'stay': {
+        // hold this spot: shoot what comes, step out only to bite or swing
+        const home = this.stayAt || (this.stayAt = { x: this.pos.x, z: this.pos.z });
+        if (this.retarget <= 0 || !this.target?.alive) {
+          this.retarget = 0.35;
+          this.target = this.pickTarget(this.melee ? 5 : Math.min(this.stats.range, 26));
+        }
+        const t = this.target;
+        if (t) {
+          const d = dist2D(this.pos.x, this.pos.z, t.pos.x, t.pos.z);
+          if (this.melee && d > this.stats.range + t.radius * 0.5) this.navigate(t.pos.x, t.pos.z, spd * 1.2, dt, this.stats.range * 0.7);
+          else {
+            this.speedNow = 0;
+            aiming = !this.melee;
+            this.face(t.pos.x, t.pos.z, dt, 12);
+            this.tryAttack(dt, t);
+          }
+        } else if (!this.navigate(home.x, home.z, spd, dt, 0.5)) {
+          // walking back to the spot
+        } else {
+          this.speedNow = 0;
+          if (this.reloadT > 0) this.reloadT -= dt;
+          if (dist2D(this.pos.x, this.pos.z, p.pos.x, p.pos.z) < 6) this.face(p.pos.x, p.pos.z, dt, 3);
         }
         break;
       }
@@ -470,7 +504,7 @@ export class SurvivorActor {
       leg.hip.rotation.x = s * amp;
       leg.knee.rotation.x = (leg.front ? -1 : 1) * Math.max(0, -s) * amp * 0.9;
     }
-    const sitting = this.mode === 'found' || (sp < 0.05 && this.mode === 'camp');
+    const sitting = this.mode === 'found' || (sp < 0.05 && (this.mode === 'camp' || (this.mode === 'stay' && !this.target)));
     const sit = (this.sitT = Math.max(0, Math.min(1, (this.sitT || 0) + (sitting ? dt : -dt * 3) * 2)));
     m.body.rotation.x = -sit * 0.5 + (gallop ? Math.sin(this.phase) * 0.06 : 0);
     m.body.position.y = m.shoulder - sit * 0.12 + (gallop ? Math.abs(Math.sin(this.phase)) * 0.05 : Math.abs(Math.sin(this.phase * 2)) * 0.01);
@@ -485,6 +519,14 @@ export class SurvivorActor {
     m.neck.rotation.x = -a * 0.5 + (this.hurtT > 0 ? 0.3 : 0);
     m.jaw.rotation.x = a * 0.6 + (this.target ? 0.12 + Math.sin(g.time * 20) * 0.05 : 0);
     m.head.rotation.y = this.mode === 'found' ? Math.sin(g.time * 0.7) * 0.3 : 0;
+  }
+
+  // Orders from the player in a building.
+  order(mode) {
+    this.mode = mode;
+    this.stayAt = mode === 'stay' ? { x: this.pos.x, z: this.pos.z } : null;
+    this.path = null;
+    this.target = null;
   }
 
   dispose() {

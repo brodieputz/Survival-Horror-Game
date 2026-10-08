@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { tex } from './textures.js';
 import { dist2D, angleDiff } from './util.js';
 import { WALL_H } from './config.js';
+import { add } from './perks.js';
 
 const MAX_TRACERS = 96;
 const tmp = new THREE.Vector3();
@@ -105,7 +106,7 @@ export class Combat {
       }
       if (!e.alive) continue;
       const head = !e.model.crawl && !e.model.quad && h.point.y > e.model.height * 0.8;
-      e.hit(dmg * (head ? 1.7 : 1), src, { head });
+      e.hit(dmg * (head ? 1.7 + (src === this.game.player ? add(this.game.run, 'headBonus') : 0) : 1), src, { head });
       this.game.particles.burst(h.point, head ? 22 : 14, 0x7a0000, 3);
       left--;
       if (left <= 0) {
@@ -491,7 +492,7 @@ export class Combat {
           if (p.kind === 'arrow') {
             p.hitSet.add(e);
             const head = p.pos.y > e.model.height * 0.8;
-            e.hit(p.dmg * (head ? 1.7 : 1), p.src, { head });
+            e.hit(p.dmg * (head ? 1.7 + (p.src === g.player ? add(g.run, 'headBonus') : 0) : 1), p.src, { head });
             g.particles.burst(p.pos, 12, 0x7a0000, 2.5);
             if (p.pierceLeft-- <= 0) {
               p.dead = true;

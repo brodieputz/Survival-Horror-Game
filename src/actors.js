@@ -227,6 +227,20 @@ export function makeHuman(look) {
   return m;
 }
 
+// A raider: a living, armed scavenger in dark, mismatched gear, face hidden
+// behind a bandana.
+export function makeRaider(rng) {
+  const pick = (a) => a[Math.floor(rng() * a.length)];
+  const m = makeHuman({ skin: pick([0xf0c8a8, 0xd8a888, 0xb07a58, 0x8a5a3a, 0x5e3a24]), shirt: pick([0x2a2a26, 0x3a3226, 0x2e3a2e, 0x1e1e22]), pants: pick([0x1e1e22, 0x2a3040, 0x3a3226]), hair: pick([0x1a1410, 0x3a2614, null]), female: rng() < 0.25, hat: rng() < 0.4 });
+  const cloth = L({ color: pick([0x8a1a14, 0x1a1a1a, 0x3a4a2a]), roughness: 0.9 });
+  m.head.add(block(0.2, 0.08, 0.04, cloth, 0, -0.03, 0.105)); // bandana over the mouth
+  // a vest with pouches
+  const vest = L({ color: 0x2a2a20, roughness: 0.8 });
+  m.torso.add(block(0.4, 0.3, 0.27, vest, 0, 0.3, 0));
+  for (const x of [-0.1, 0, 0.1]) m.torso.add(block(0.08, 0.09, 0.05, vest, x, 0.2, 0.15));
+  return m;
+}
+
 // A dog: a quadruped rig with the same kind of joints (legs with knees, a
 // head with a jaw) plus a tail. look: coat, coat2 (muzzle, chest, socks),
 // size (1 = a German shepherd, ~0.62 m at the shoulder).

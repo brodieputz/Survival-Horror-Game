@@ -3,8 +3,9 @@
 // here is JSON-serialisable so the run can be saved between sessions.
 import { RNG } from './util.js';
 import { BARRICADE, MAX_SURVIVORS } from './config.js';
-import { WEAPONS, AMMO, AMMO_ORDER, weaponStats, weaponPower, rollWeapon, ammoPickup } from './weapons.js';
+import { WEAPONS, AMMO, AMMO_ORDER, weaponStats, weaponPower, rollWeapon, ammoPickup, upgradeCost } from './weapons.js';
 import { CITIES, CITY, cityLabel, miles, citySize } from './cities.js';
+import { mul as perkMul, add as perkAdd } from './perks.js';
 
 const SAVE_KEY = 'dreaddepths.run.v2';
 const BEST_KEY = 'dreaddepths.bestNights';
@@ -288,6 +289,8 @@ export function grantXp(rec, n) {
     rec.level++;
     gained++;
   }
+  // the player (the only record without a name) gets a perk point a level
+  if (gained && !rec.name) rec.perkPoints = (rec.perkPoints || 0) + gained;
   return gained;
 }
 
@@ -295,7 +298,73 @@ export const playerMaxHp = (lvl) => 100 + 10 * (lvl - 1);
 export const playerMaxStamina = (lvl) => 100 + 8 * (lvl - 1);
 export const playerSpeedMul = (lvl) => Math.min(1.25, 1 + 0.015 * (lvl - 1));
 
-export const survivorMaxHp = (s) => s.hpBase + 10 * (s.level - 1);
+export const survivorMaxHp = (s) => s.hpBase + 10 * (s.level - 1) + (s.prof === 'soldier' ? soldierHp(s) : 0);
+
+// ---------------------------------------------------------------- professions
+// What a survivor did before. Citizens are most people; the others bring a
+// skill that grows as they level up.
+export const PROFS = {
+  citizen: { name: 'Citizen', icon: '', weight: 0.55 },
+  doctor: { name: 'Doctor', icon: '✚', weight: 0.15 },
+  soldier: { name: 'Soldier', icon: '✪', weight: 0.15 },
+  carpenter: { name: 'Carpenter', icon: '⚒', weight: 0.15 },
+};
+export const doctorHeal = (s) => 0.25 + 0.025 * (s.level - 1); // share of everyone's health each dawn
+export const carpenterRepair = (s) => 0.25 + 0.025 * (s.level - 1); // share of the barricade each dawn
+export const soldierHp = (s) => 25 + 5 * (s.level - 1);
+export const soldierDmg = (s) => 1.2 + 0.03 * (s.level - 1);
+export function profSkill(s) {
+  switch (s.prof) {
+    case 'doctor':
+      return `Heals everyone ${Math.round(doctorHeal(s) * 100)}% each dawn.`;
+    case 'carpenter':
+      return `Repairs ${Math.round(carpenterRepair(s) * 100)}% of the barricade each dawn.`;
+    case 'soldier':
+      return `+${soldierHp(s)} health, +${Math.round((soldierDmg(s) - 1) * 100)}% damage.`;
+    default:
+      return s.dog ? '' : 'Nothing special, but a pair of hands.';
+  }
+}
+export function rollProf(rng) {
+  let r = rng.next();
+  for (const [k, p] of Object.entries(PROFS)) {
+    r -= p.weight;
+    if (r <= 0) return k;
+  }
+  return 'citizen';
+}
+// A survivor's name with what they do, e.g. "Dr. Ann Lee" or "Sgt. Bo Hart".
+export function survivorTitle(s) {
+  if (s.dog) return s.name;
+  const pre = { doctor: 'Dr. ', soldier: 'Sgt. ' }[s.prof] || '';
+  return pre + s.name;
+}
+
+// Each dawn: doctors tend the wounded and carpenters patch the barricade
+// (several of either stack), plus the Bedside Manner perk.
+export function dawnCare(run) {
+  const lines = [];
+  const here = run.survivors.filter((s) => s.status !== 'dead' && s.hp > 0);
+  const docs = here.filter((s) => s.prof === 'doctor');
+  const heal = docs.reduce((a, s) => a + doctorHeal(s), 0) + perkAdd(run, 'squadHeal');
+  if (heal > 0) {
+    const pmax = playerMaxHp(run.player.level) + perkAdd(run, 'hp');
+    run.player.hp = Math.min(pmax, run.player.hp + pmax * heal);
+    for (const s of here) s.hp = Math.min(survivorMaxHp(s), s.hp + survivorMaxHp(s) * heal);
+    if (docs.length) lines.push({ kind: 'good', text: `${docs.map(survivorTitle).join(' and ')} ${docs.length > 1 ? 'tend' : 'tends'} to everyone's wounds (+${Math.round(heal * 100)}% health).` });
+    else lines.push({ kind: 'good', text: `You check on everyone at first light (+${Math.round(heal * 100)}% health).` });
+  }
+  const carps = here.filter((s) => s.prof === 'carpenter');
+  const fix = carps.reduce((a, s) => a + carpenterRepair(s), 0);
+  const b = run.barricade;
+  const max = barricadeMax(run);
+  if (fix > 0 && b.hp < max) {
+    const before = b.hp;
+    b.hp = Math.min(max, b.hp + max * fix);
+    lines.push({ kind: 'good', text: `${carps.map(survivorTitle).join(' and ')} ${carps.length > 1 ? 'patch' : 'patches'} up the barricade (+${Math.round(b.hp - before)}).` });
+  }
+  return lines;
+}
 export const survivorSpeed = (s) => s.speedBase * (1 + 0.02 * (s.level - 1));
 export const survivorStamina = (s) => s.stamBase + 8 * (s.level - 1);
 export const survivorAim = (s) => Math.min(0.93, 0.42 + 0.05 * s.level);
@@ -312,6 +381,7 @@ export function makeSurvivor(run, rng, level) {
     weapon: null,
     status: 'found',
     kills: 0,
+    prof: rollProf(rng),
     look: {
       skin: rng.pick(SKIN),
       shirt: rng.pick(SHIRT),
@@ -387,7 +457,7 @@ export function removeWeapon(run, uid) {
 // ---------------------------------------------------------------- new run
 export function newRun(seed = (Math.random() * 0xffffffff) >>> 0) {
   const run = {
-    version: 5,
+    version: 6,
     seed,
     startDoy: 70 + ((seed >>> 3) % 25),
     day: 1,
@@ -408,7 +478,7 @@ export function newRun(seed = (Math.random() * 0xffffffff) >>> 0) {
     weapons: [],
     nextUid: 1,
     loadout: { primary: null, secondary: null },
-    player: { level: 1, xp: 0, hp: playerMaxHp(1), kills: 0, battery: 1 },
+    player: { level: 1, xp: 0, hp: playerMaxHp(1), kills: 0, battery: 1, perks: [], perkPoints: 0 },
     survivors: [],
     nextSurvivorId: 1,
     barricade: { level: 0, hp: BARRICADE.baseHp },
@@ -476,7 +546,13 @@ export const coldNight = (run) => season(run) === 'winter' && run.locality.biome
 // Every seventh night the moon rises red and the dead come for certain.
 export const bloodMoon = (run) => run.day % 7 === 0;
 
-export const barricadeMax = (run) => BARRICADE.baseHp + BARRICADE.perLevel * run.barricade.level;
+export const barricadeMax = (run) => BARRICADE.baseHp + BARRICADE.perLevel * run.barricade.level + perkAdd(run, 'barricade');
+// Perk-adjusted costs and times.
+export const searchHours = (run, loc) => Math.max(1, loc.hours - perkAdd(run, 'searchCut'));
+export const tripCoal = (run, opt) => Math.max(1, opt.coal - perkAdd(run, 'coalCut'));
+export const hpPerScrap = (run) => BARRICADE.hpPerScrap / perkMul(run, 'repairMul');
+export const upgCost = (run, def, lv) => Math.ceil(upgradeCost(def, lv) * perkMul(run, 'upgradeMul'));
+export const reinforceCost = (run) => Math.ceil(BARRICADE.improveCost(run.barricade.level) * perkMul(run, 'reinforceMul'));
 export const waveChance = (run) => (bloodMoon(run) ? 1 : Math.min(1, 0.55 + 0.015 * (run.day - 1)));
 
 // ---------------------------------------------------------------- cities
@@ -753,7 +829,12 @@ function generateLocation(run, rng, type, index, profile, x, y, usedNames) {
     containers: [],
     survivors: [],
     batteries: rng.chance(0.75) ? rng.int(1, 3) : 0,
+    // now and then nobody (and nothing) is home; never a landmark
+    empty: !LOCATION_TYPES[type].landmark && rng.chance(0.14),
+    // rarely, armed raiders have claimed a place
+    raiders: index >= 2 && difficulty >= 2 && rng.chance(0.06),
   };
+  if (out.empty) out.raiders = false;
   // loot leans the way the region does, with noise so no building is a sure thing
   const weights = {};
   for (const k in L.loot) {
@@ -929,7 +1010,7 @@ export function grantItem(run, it) {
 
 export const minSearchHours = (run) => {
   const open = run.locality.locations.filter((l) => !l.searched && !l.claimed);
-  return open.length ? Math.min(...open.map((l) => l.hours)) : Infinity;
+  return open.length ? Math.min(...open.map((l) => searchHours(run, l))) : Infinity;
 };
 
 // A searched place is done with, unless a locked gate is still waiting for
@@ -947,7 +1028,7 @@ export function expeditionChance(run, s, loc) {
   const pw = weaponPower(inst);
   const hpf = 0.55 + 0.45 * (s.hp / survivorMaxHp(s));
   const p = (0.96 - 0.13 * loc.difficulty + 0.06 * (s.level - 1) + 0.09 * (pw - 0.6)) * hpf;
-  return Math.max(0.06, Math.min(0.96, p));
+  return Math.max(0.06, Math.min(0.96, p + perkAdd(run, 'expedition')));
 }
 
 // Resolve every survivor sent out today. Returns report lines.
@@ -1019,7 +1100,7 @@ export function dailyRations(run) {
     run.food--;
     fed++;
   } else {
-    const loss = Math.round(playerMaxHp(run.player.level) * HUNGER_LOSS);
+    const loss = Math.round(playerMaxHp(run.player.level) * HUNGER_LOSS * perkMul(run, 'hungerMul'));
     run.player.hp -= loss;
     lines.push({ kind: 'bad', text: `There was nothing for you to eat. You lost ${loss} health.` });
     if (run.player.hp <= 0) {
@@ -1143,7 +1224,7 @@ export function travel(run, opt) {
   // untriggered traps are packed back into the stockpile
   for (const t of run.placedTraps) run.traps[t.type]++;
   run.placedTraps = [];
-  run.coal -= opt.coal;
+  run.coal -= tripCoal(run, opt);
   run.stats.miles = (run.stats.miles || 0) + (opt.miles || 0);
   arriveAt(run, CITY[opt.city], opt.profile);
   run.stats.localities++;
@@ -1163,7 +1244,7 @@ export function loadRun() {
     const s = localStorage.getItem(SAVE_KEY);
     if (!s) return null;
     const run = JSON.parse(s);
-    if (!run || run.version < 2 || run.version > 5) return null;
+    if (!run || run.version < 2 || run.version > 6) return null;
     return migrateRun(run);
   } catch (e) {
     return null;
@@ -1210,6 +1291,14 @@ function migrateRun(run) {
   if (run.version === 4) {
     run.startDoy = 80;
     run.version = 5;
+  }
+  if (run.version === 5) {
+    // perks for the levels already earned; everyone already met is a citizen
+    run.player.perks = [];
+    run.player.perkPoints = Math.max(0, run.player.level - 1);
+    for (const s of run.survivors) if (!s.dog) s.prof = s.prof || 'citizen';
+    for (const l of run.locality.locations) for (const s of l.survivors || []) if (!s.dog) s.prof = s.prof || 'citizen';
+    run.version = 6;
   }
   return run;
 }

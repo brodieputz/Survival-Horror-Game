@@ -74,14 +74,14 @@ You have **10 to 14 hours of daylight**, depending on the season. Only scavengin
 
 * **Map table: local map.** This shows the places around you, each with a danger rating, a search cost in hours, its number of floors and its likely loot. Locked vaults you know about and keys you've heard of are marked.
   * **Search it yourself.** You arrive on the street outside a building that looks like what it is (a house with a driveway, an office with a parking lot, a gas station with pumps, a skyscraper with a plaza and a fountain...). Leave by walking back to the signpost where you came in.
-  * **Bring survivors (and dogs) along.** They follow you from floor to floor, fight, and level up. If they die, their weapon is lost.
+  * **Bring survivors (and dogs) along.** They follow you from floor to floor, fight, and level up. If they die, their weapon is lost. Talk to one (**E**) to trade weapons hand to hand: swap what you're holding for theirs, or give them a gun you just found. You can also tell them to **stay here** or **follow me**; press **G** to order everyone at once. Anyone told to stay waits on their floor while you go up or down, and makes their own way home if you leave.
   * **Send a survivor alone.** Their odds are shown before you commit, based on their level, weapon and health and the location's danger. If they make it, they come back at dusk with everything inside (and any key they found). If not, they never come back. Dogs won't go alone.
 * **Map table: regional map.** Pick the next city (see above).
-* **Weapon rack and workbench.** Equip a primary and a secondary weapon, hand weapons to survivors, and spend scrap upgrading magazine size, range, damage, fire rate or accuracy. Each weapon can only be held by one person.
-* **Talk to a survivor.** See their level and stats, heal them with a med kit, or change their weapon.
+* **Weapon rack and workbench.** Equip a primary and a secondary weapon, hand weapons to survivors, and spend scrap upgrading magazine size, range, damage, fire rate or accuracy. Each weapon can only be held by one person. Whatever you pick on the rack is compared stat by stat (damage, damage per second, fire rate, magazine, reload, range, accuracy) with the weapon in your hand, with green and red arrows for better and worse; [1] and [2] switch which hand to compare with. The numbers include your perks.
+* **Talk to a survivor.** See their level, profession and stats, heal them with a med kit, or change their weapon.
 * **Barricade.** Spend scrap to repair it, or reinforce it for more maximum strength.
 * **Train cars.** Build a turret with scrap and a blueprint: machine gun (common), missile or artillery (rare). Turrets never run out of ammo, can't be destroyed, and only fire beyond the barricade.
-* **Traps** (press **T**, or use the crate by the gate). Walk out through the gate and set bear traps, land mines, tripwire spikes and kerosene tanks within a few steps of where you stand. A kerosene tank explodes when shot. You can pick unused traps back up.
+* **Traps** (press **T**, or use the crate by the gate). Set bear traps, land mines, tripwire spikes and kerosene tanks anywhere on open ground within a few steps of where you stand: out in the field, just behind the barricade as a second line, or among the tents. Only the dead set them off. A kerosene tank explodes when shot. You can pick unused traps back up.
 * **Campfire.** Sit by the fire to let a few hours pass, or wait until dusk.
 
 When your hours run out it's **dusk**. You get one last chance to prepare, then sleep in your tent.
@@ -108,10 +108,12 @@ Some cities have landmarks, which are bigger, richer and more dangerous than any
 
 As well as the dead wandering the halls:
 
-* **Boarded-up rooms.** Some doorways are nailed shut with *DEAD INSIDE* painted across the planks. Get close or make noise and whatever is shut inside starts battering the boards until they splinter. You can also pry them off yourself (**E**, loudly) and be ready when the dead come out.
+* **Boarded-up rooms.** Some doorways are nailed shut with *DEAD INSIDE* painted across the planks. Get close or make noise and whatever is shut inside starts hammering on the boards, but the planks hold: the room stays shut unless you pry the boards off yourself (**E**, loudly) or blow them in. There's usually something worth having inside.
 * **Nests.** A pulsing mound of flesh that keeps disgorging crawlers, walkers and runners while you're near. Shoot it, burn it or blow it up to stop it; there's usually scrap and food in the remains.
 * **Lurkers** lie still in pools of blood among the bones, looking like any other corpse, until someone walks within a few steps.
 * **Spitters** keep their distance and lob globs of bile that burn on impact and leave a pool of acid on the floor. Keep moving.
+* **Raiders** (rare). Now and then a building has been claimed by armed raiders instead of the dead. They spot you like zombies do, keep a fighting distance and shoot, close in when they lose sight of you, and back off if you rush them. Their gunfire draws the dead. Each one drops their gun when they fall, often with ammunition and food.
+* **Sometimes nobody's home.** Now and then a place has no zombies in it at all. You won't know until you're inside.
 * **Nothing is safe on the stairs.** Zombies hunting you follow you up or down to the next floor, arriving a few seconds behind you depending on how far back they were.
 
 ### Batteries
@@ -144,9 +146,34 @@ On the first night there is a 55% chance of a wave, and the chance rises by 1.5%
 
 If you die at any point, the run is over.
 
-## Leveling
+## Leveling and perks
 
 You and every survivor gain XP from kills. Levels raise health, stamina, speed and weapon handling. Survivors also aim better as they level up.
+
+**Every level you gain is a perk point.** The perk tree (press **P**; it also opens by itself once nothing is hunting you) has eight branches and over eighty perks. Each perk needs the ones above it in its branch, and some need two:
+
+| Branch | For example |
+| --- | --- |
+| **Marksman** | Steady Hands, Gun Nut I–III, Quick Hands, Headhunter, Extended Mags, Penetrator, Ammo Hoarder, Deadeye |
+| **Brawler** | Heavy Hitter, Long Reach, Bloodlust and Vampire (melee kills heal you), Cleaver and Whirlwind (hit more zombies per swing), Executioner |
+| **Survivor** | Tough, Thick Skin, Field Medic, Iron Stomach, Regeneration, Cold Blooded, Quick Learner, Last Stand (once a day, a killing blow leaves you on 1 health) |
+| **Athlete** | Marathon, Sprinter, Light Step and Ghost (quieter footsteps), Acrobat, Escape Artist, Free Runner |
+| **Scavenger** | Scrapper, Forager, Ammo Finder, Pack Rat (batteries), Medicine Bag, Quick Search, Lockpicking (open vaults without the key), Treasure Hunter |
+| **Leader** | Inspiring and Rally (survivors and dogs hit harder), Drill Sergeant and Mentor (they level faster), Dog Whisperer, Scout Leader, Recruiter, Bedside Manner, Warband |
+| **Engineer** | Carpentry, Fortify, Trapper, Turret Tech, Gunsmith, Stoker (trains burn less coal), Overclock, Siege Engineer |
+| **Demolitions** | Blaster, Flak Jacket, Wide Blast, Firebug, Pyromaniac, Bomb Suit (immune to your own blasts), Armageddon |
+
+## Survivors' professions
+
+Everyone you meet did something before. Most were ordinary **citizens**, with nothing special about them. The rest bring a skill that grows every time they level up:
+
+| Profession | Skill |
+| --- | --- |
+| **Doctor** (Dr.) | At dawn, heals you and every survivor by 25% of their health (+2.5% per level). Several doctors stack. |
+| **Soldier** (Sgt.) | +25 health (+5 per level) and +20% damage (+3% per level). |
+| **Carpenter** | At dawn, repairs 25% of the barricade (+2.5% per level), and rebuilds it if it was breached. Several carpenters stack. |
+
+Professions show in the HUD, on the map table and in each survivor's panel, and the dawn report says what your doctors and carpenters did.
 
 ## Weapons
 
@@ -198,6 +225,7 @@ Anything hunting you in a building follows you up and down the stairs.
 | **Blood Hound** | wave 2+, buildings | Its shriek whips the horde into a frenzy. In buildings it calls the others, and hiding won't fool it. |
 | **Spitter** | wave 3+, buildings | Keeps its distance and lobs bile that burns and leaves an acid pool. At the camp it hangs back and spits over the barricade. |
 | **Lurker** | buildings | Lies among the dead like a corpse and springs up when you come close. |
+| **Raider** | rare, in buildings | Not a zombie: an armed human holding a building. Keeps its distance and shoots, and drops its gun when it falls. |
 | **Blind Brute** | wave 5+, dangerous buildings | Hunts by sound and smashes barricades. Shoot it and it charges. |
 
 Everyone, living or dead, is built to the same human scale as you: about 1.8 m tall.
@@ -213,6 +241,7 @@ Everyone, living or dead, is built to the same human scale as you: about 1.8 m t
 | R | Reload | H | Use a med kit |
 | 1 / 2 / Q / wheel | Switch weapon | F | Flashlight (runs on batteries) |
 | T | Place traps (camp, by day) | M / Tab | Map (in buildings) |
+| P | Perk tree | G | Tell your party to stay / follow (in buildings) |
 | Esc | Pause | | |
 
 ## Graphics
@@ -223,7 +252,7 @@ The **Graphics** setting on the pause screen has three levels:
 * **Balanced**: the same look without bloom, with lighter anti-aliasing and smaller shadow maps, for slower machines.
 * **Retro (pixelated)**: the original low-resolution look.
 
-The sun sits low, so shadows are long. Walking into a building, the daylight fades out over a few steps and your eyes take a moment to adjust. Indoors, the flashlight's beam hangs in the dusty air, with motes drifting through it. Grass sways in the wind, smoke curls up from the campfire, and rain falls in streaks. Short letterboxed shots open a building search, the start of an attack, the trip between cities and the arrival; any key or a click skips them.
+The flashlight stops down when its beam lands on a wall or furniture right in front of you, so it lights a room without blinding you up close. The sun sits low, so shadows are long. Walking into a building, the daylight fades out over a few steps and your eyes take a moment to adjust. Indoors, the flashlight's beam hangs in the dusty air, with motes drifting through it. Grass sways in the wind, smoke curls up from the campfire, and rain falls in streaks. Short letterboxed shots open a building search, the start of an attack, the trip between cities and the arrival; any key or a click skips them.
 
 ## Tech notes
 
@@ -240,9 +269,10 @@ The sun sits low, so shadows are long. Walking into a building, the daylight fad
   * `src/exterior.js` and `src/lotprops.js`: each building's facade, roof and signage, its street-front lot, and the street outside
   * `src/train.js` and `src/travel.js`: the locomotive, tender and cars, and the film of the trip between cities
   * `src/railevents.js`: the events on the line between cities and their outcomes
+  * `src/perks.js`: the perk tree and how perks change the numbers
   * `src/env.js`, `src/sky.js`, `src/render.js`, `src/atmos.js` and `src/beam.js`: lighting and time of day, the sky dome, the post-processing pipeline (light shafts, bloom, grade), grass and smoke, and the flashlight beam and dust
-  * `src/enemies.js`: zombie AI (roaming in buildings, wave mode in camp)
-  * `src/survivors.js`: survivor and dog NPCs (camp, defend, follow)
+  * `src/enemies.js`: zombie AI (roaming in buildings, wave mode in camp) and armed raiders
+  * `src/survivors.js`: survivor and dog NPCs (camp, defend, follow, stay)
   * `src/combat.js`: hitscan, projectiles, explosions, fire, melee and tracers
   * `src/player.js`: the player controller, weapons, recoil and the flashlight's battery
   * `src/gunModels.js` and `src/viewmodel.js`: weapon models, and the first-person hands and gun (aiming, recoil, reloads)

@@ -6,6 +6,7 @@ import { clamp, damp, angleDiff } from './util.js';
 import { WEAPONS, weaponStats, AMMO } from './weapons.js';
 import { weaponByUid, playerMaxHp, playerMaxStamina, playerSpeedMul } from './run.js';
 import { RECOIL } from './viewmodel.js';
+import { mul, add, perkStats } from './perks.js';
 
 const HIDE_CAM = {
   locker: { y: 1.5, fwd: -0.02, yawLim: 0.55, pitchMin: -0.35, pitchMax: 0.25 },
@@ -42,13 +43,13 @@ export class Player {
     this.run.player.hp = v;
   }
   get maxHealth() {
-    return playerMaxHp(this.level);
+    return playerMaxHp(this.level) + add(this.run, 'hp');
   }
   get maxStamina() {
-    return playerMaxStamina(this.level);
+    return playerMaxStamina(this.level) + add(this.run, 'stam');
   }
   get speedMul() {
-    return playerSpeedMul(this.level);
+    return playerSpeedMul(this.level) * mul(this.run, 'speedMul');
   }
 
   resetTransient() {
@@ -127,8 +128,8 @@ export class Player {
   }
   weaponStats() {
     const w = this.weapon();
-    if (!w) return { def: FISTS, mag: 0, dmg: FISTS.dmg * (1 + 0.02 * (this.level - 1)), rate: FISTS.rate, range: FISTS.range, spread: 0, reload: 0, pellets: 1, pierce: 0, splash: 0 };
-    return weaponStats(w, this.level);
+    if (!w) return perkStats({ def: FISTS, mag: 0, dmg: FISTS.dmg * (1 + 0.02 * (this.level - 1)), rate: FISTS.rate, range: FISTS.range, spread: 0, reload: 0, pellets: 1, pierce: 0, splash: 0 }, this.run);
+    return perkStats(weaponStats(w, this.level), this.run);
   }
 
   switchTo(slot) {
@@ -146,6 +147,9 @@ export class Player {
     const game = this.game;
     const world = game.level.world;
     this.invuln = Math.max(0, this.invuln - dt);
+    // Regeneration perks: heal while nothing is hunting you
+    const regen = add(this.run, 'regen');
+    if (regen && this.alive && this.health < this.maxHealth && !game.anyHunting()) this.health = Math.min(this.maxHealth, this.health + regen * dt);
     this.fireCd = Math.max(0, this.fireCd - dt);
     this.switchT = Math.max(0, this.switchT - dt);
     this.recoil = damp(this.recoil, 0, 10, dt);
@@ -203,7 +207,7 @@ export class Player {
       }
     } else {
       this.staminaDelay -= dt;
-      if (this.staminaDelay <= 0) this.stamina = Math.min(this.maxStamina, this.stamina + (PLAYER.staminaRegen + (this.level - 1) * 0.8) * dt);
+      if (this.staminaDelay <= 0) this.stamina = Math.min(this.maxStamina, this.stamina + (PLAYER.staminaRegen + (this.level - 1) * 0.8) * mul(this.run, 'stamRegenMul') * dt);
       if (this.exhausted && this.stamina > this.maxStamina * 0.3) this.exhausted = false;
     }
     this.breathCd -= dt;
@@ -218,7 +222,7 @@ export class Player {
     if (wdef.cat === 'lmg' || wdef.cat === 'launcher') speed *= 0.88;
     speed *= 1 - 0.42 * ads;
     if (this.trapped > 0) {
-      this.trapped -= dt;
+      this.trapped -= dt / mul(this.run, 'trapTimeMul');
       speed = 0;
     }
     if (this.inPit > 0) speed = 0;
@@ -230,10 +234,10 @@ export class Player {
     this.vel.x = damp(this.vel.x, tx, accel, dt);
     this.vel.z = damp(this.vel.z, tz, accel, dt);
 
-    if (input.wasPressed('Space') && this.onGround && this.trapped <= 0 && this.inPit <= 0 && this.stamina >= PLAYER.jumpCost * 0.5) {
+    if (input.wasPressed('Space') && this.onGround && this.trapped <= 0 && this.inPit <= 0 && this.stamina >= PLAYER.jumpCost * mul(this.run, 'jumpCostMul') * 0.5) {
       this.velY = PLAYER.jumpV;
       this.onGround = false;
-      this.stamina = Math.max(0, this.stamina - PLAYER.jumpCost);
+      this.stamina = Math.max(0, this.stamina - PLAYER.jumpCost * mul(this.run, 'jumpCostMul'));
       this.staminaDelay = 0.9;
       this.crouch = false;
       game.audio.jump();
@@ -330,7 +334,7 @@ export class Player {
     const g = this.game;
     const vol = this.crouch ? 0.35 : this.running ? 1.1 : 0.7;
     g.audio.playerStep(s === 'dirt' ? 'wood' : s, vol);
-    let r = this.crouch ? NOISE.crouch : this.running ? NOISE.run : NOISE.walk;
+    let r = (this.crouch ? NOISE.crouch : this.running ? NOISE.run : NOISE.walk) * mul(this.run, 'noiseMul');
     let kind = 'player';
     if (s === 'glass') {
       r = this.crouch ? NOISE.glassCrouch : NOISE.glass;
@@ -365,13 +369,14 @@ export class Player {
     const wants = def.auto ? input.mouseDown : input.clicked;
     if (!wants || this.fireCd > 0) return;
     if (def.cat === 'melee') {
-      if (this.stamina < (def.stam || 0) * 0.5 && def.stam) {
+      const stam = (def.stam || 0) * mul(this.run, 'stamCostMul');
+      if (this.stamina < stam * 0.5 && stam) {
         g.audio.breath(0.5);
         this.fireCd = 0.4;
         return;
       }
       this.fireCd = 1 / st.rate;
-      this.stamina = Math.max(0, this.stamina - (def.stam || 0));
+      this.stamina = Math.max(0, this.stamina - stam);
       this.staminaDelay = 0.7;
       this.swing = 1;
       if (def.id === 'chainsaw') this.resolveSwing(def, st);
@@ -390,7 +395,7 @@ export class Player {
       else g.ui.message(`Out of ${AMMO[def.ammo].name.toLowerCase()}.`, 'dim');
       return;
     }
-    inst.mag--;
+    if (Math.random() >= add(this.run, 'ammoSave')) inst.mag--;
     this.fireCd = 1 / st.rate;
     this.recoil = def.cat === 'sniper' || def.cat === 'shotgun' || def.cat === 'launcher' ? 1.4 : def.cat === 'flame' ? 0.1 : def.auto ? 0.45 : 1;
     // the muzzle climbs (you pull it back down) and the view punches
@@ -452,7 +457,7 @@ export class Player {
       reach: st.range,
       arc: def.arc ?? 1.1,
       dmg: st.dmg,
-      cleave: def.cleave ?? 1,
+      cleave: (def.cleave ?? 1) + add(this.run, 'cleave'),
       fwd: def.id === 'chainsaw' ? null : fwd,
     });
     if (def.id === 'chainsaw') g.audio.weaponFire(def);
@@ -566,7 +571,7 @@ export class Player {
     const run = this.run;
     if (run.player.battery == null) run.player.battery = 1;
     if (!this.flashlight) return;
-    run.player.battery = Math.max(0, run.player.battery - dt / BATTERY_LIFE);
+    run.player.battery = Math.max(0, run.player.battery - dt / (BATTERY_LIFE * mul(run, 'batteryMul')));
     if (run.player.battery <= 0) {
       if (!this.swapBattery()) {
         this.flashlight = false;
@@ -585,7 +590,7 @@ export class Player {
     if (run.medkits <= 0) return this.game.ui.message('No med kits.', 'dim');
     if (this.health >= this.maxHealth) return this.game.ui.message('Already at full health.', 'dim');
     run.medkits--;
-    const heal = Math.round(this.maxHealth * 0.6);
+    const heal = Math.round(this.maxHealth * 0.6 * mul(run, 'medkitMul'));
     this.health = Math.min(this.maxHealth, this.health + heal);
     this.game.audio.pickup();
     this.game.ui.message(`+${heal} health`, 'good');
@@ -593,7 +598,18 @@ export class Player {
 
   damage(amount, cause) {
     if (!this.alive || this.invuln > 0) return;
+    const run = this.run;
+    amount *= mul(run, 'dmgTakenMul');
+    if (cause === 'explosion') amount *= mul(run, 'selfBlastMul');
+    if (amount <= 0) return;
     this.health -= amount;
+    // Last Stand: once a day, cheat death
+    if (this.health <= 0 && add(run, 'lastStand') && run.player.lastStandDay !== run.day) {
+      run.player.lastStandDay = run.day;
+      this.health = 1;
+      this.invuln = 1.2;
+      this.game.ui.message('LAST STAND — you refuse to die.', 'level', 3);
+    }
     this.shake = Math.max(this.shake, Math.min(1, amount / 30));
     this.game.ui.hurt(Math.min(1, amount / 40));
     this.game.audio.impactPlayer(amount >= 35);

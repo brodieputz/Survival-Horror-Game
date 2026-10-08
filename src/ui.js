@@ -1,7 +1,7 @@
 // DOM HUD, minimaps and the camp management panels (armory, survivors,
 // barricade, turrets, local & regional maps, reports).
 import { TILE, TRAPS, TRAP_ORDER, TURRETS, TURRET_ORDER, BARRICADE, TRAVEL_HOURS } from './config.js';
-import { WEAPONS, WEAPON_LIST, RARITY, RARITY_ORDER, AMMO, AMMO_ORDER, CATEGORY, UPGRADES, UPG_MAX, upgradeKeys, upgradeCost, weaponStats, isExplosive } from './weapons.js';
+import { WEAPONS, WEAPON_LIST, RARITY, RARITY_ORDER, AMMO, AMMO_ORDER, CATEGORY, UPGRADES, UPG_MAX, upgradeKeys, weaponStats, isExplosive } from './weapons.js';
 import {
   BIOMES,
   LOCATION_TYPES,
@@ -23,8 +23,17 @@ import {
   appraisal,
   TAG_NAMES,
   DOG_BITE,
+  searchHours,
+  tripCoal,
+  hpPerScrap,
+  reinforceCost,
+  upgCost,
+  PROFS,
+  profSkill,
+  survivorTitle,
 } from './run.js';
 import { RAIL_EVENTS, canAfford } from './railevents.js';
+import { BRANCHES, PERKS, PERK, hasPerk, perkStats } from './perks.js';
 import { CITIES, CITY, US_OUTLINE, LAKES, MAP_ASPECT, project, SIZE_NAMES, citySize } from './cities.js';
 
 // Where a city sits on the regional map canvas (and, as fractions, on the
@@ -62,6 +71,7 @@ const DEATH_TEXT = {
   acid: 'Dissolved by a Spitter\'s bile.',
   lurker: 'Something lying among the bodies was not dead.',
   cold: 'Froze in the night.',
+  raider: 'Gunned down by raiders.',
   spikes: 'Impaled on rusted spikes.',
   beartrap: 'Bled out in the jaws of a trap.',
   explosion: 'Caught in your own blast.',
@@ -207,17 +217,21 @@ export class UI {
 
     // squad
     let sq = '';
-    const list = lvl.kind === 'building' ? lvl.actors.map((a) => a.rec) : run.survivors.filter((s) => s.status !== 'dead');
+    const list = lvl.kind === 'building' ? (lvl.party || lvl.actors).map((a) => a.rec) : run.survivors.filter((s) => s.status !== 'dead');
     for (const s of list) {
-      const away = s.status === 'away';
+      const actor = lvl.kind === 'building' ? lvl.party.find((a) => a.rec === s) : null;
+      const away = s.status === 'away' || (actor && actor.floor != null && !lvl.actors.includes(actor));
+      const icon = s.dog ? '🐕' : PROFS[s.prof]?.icon || '';
+      const tag = actor?.mode === 'stay' ? ' ⏸' : '';
       const hpF = Math.max(0, s.hp / survivorMaxHp(s));
-      sq += `<div class="sq ${away ? 'away' : ''}"><span>${esc(s.name.split(' ')[0])} <small>L${s.level}</small>${away ? ' (out)' : ''}</span><div class="hb"><i style="width:${(hpF * 100).toFixed(0)}%"></i></div></div>`;
+      sq += `<div class="sq ${away ? 'away' : ''}"><span>${icon ? icon + ' ' : ''}${esc(s.name.split(' ')[0])} <small>L${s.level}</small>${tag}${away ? (actor ? ' (other floor)' : ' (out)') : ''}</span><div class="hb"><i style="width:${(hpF * 100).toFixed(0)}%"></i></div></div>`;
     }
     this.set('squad', this.el.squad, sq, 'innerHTML');
     this.set('miniHint', this.el.miniHint, lvl.kind === 'building' ? '[M] map' : '');
 
     // bottom-left: level, health, stamina
-    this.set('lvlT', this.el.lvlText, `LEVEL ${run.player.level}`);
+    const pp = run.player.perkPoints || 0;
+    this.set('lvlT', this.el.lvlText, `LEVEL ${run.player.level}${pp ? ` <span class="perkpt">★ ${pp} perk point${pp > 1 ? 's' : ''} · P</span>` : ''}`, 'innerHTML');
     this.set('xpT', this.el.xpText, `${run.player.xp} / ${xpToNext(run.player.level)} xp`);
     this.set('xpw', this.el.xpFill.style, ((run.player.xp / xpToNext(run.player.level)) * 100).toFixed(1) + '%', 'width');
     const hp = Math.max(0, p.health / p.maxHealth);
@@ -431,6 +445,8 @@ export class UI {
       report: () => this.panelReport(),
       note: () => this.panelNote(),
       railevent: () => this.panelRailEvent(),
+      squad: () => this.panelSquad(),
+      perks: () => this.panelPerks(),
     }[P.kind]();
     this.el.panelTitle.textContent = r.title;
     this.el.panelSub.innerHTML = r.sub || '';
@@ -476,17 +492,38 @@ export class UI {
     const inst = P.sel != null ? weaponByUid(run, P.sel) : null;
     if (inst) {
       const def = WEAPONS[inst.id];
-      const s = weaponStats(inst, run.player.level);
+      const s = perkStats(weaponStats(inst, run.player.level), run);
       const melee = def.cat === 'melee';
+      // compare with what you're holding (or the other hand, if this is it)
+      const lo = run.loadout;
+      const heldSlot = P.cmp ?? g.player?.slot ?? 0;
+      let cmpUid = heldSlot === 0 ? lo.primary : lo.secondary;
+      if (cmpUid === inst.uid) cmpUid = heldSlot === 0 ? lo.secondary : lo.primary;
+      const cmpInst = cmpUid != null && cmpUid !== inst.uid ? weaponByUid(run, cmpUid) : null;
+      const c = cmpInst ? perkStats(weaponStats(cmpInst, run.player.level), run) : null;
       mid += `<h3 style="font-size:30px">${rname(def)}</h3><div class="muted">${RARITY[def.rarity].name} ${CATEGORY[def.cat]}${def.ammo ? ` · uses ${AMMO[def.ammo].name.toLowerCase()} (shared by ${WEAPON_LIST.filter((w) => w.ammo === def.ammo).length} weapons)${def.ammoPer ? `, ${def.ammoPer} per throw` : ''}` : ''}${isExplosive(def) ? ' · <span class="muted">survivors use it slowly</span>' : ''}</div>`;
+      mid += `<div class="cmp-line">Compared with ${cmpInst ? rname(WEAPONS[cmpInst.id]) : '<span class="muted">nothing (that hand is empty)</span>'} <button class="pbtn ${heldSlot === 0 ? 'on' : ''}" data-act="cmp" data-slot="0">[1]</button><button class="pbtn ${heldSlot === 1 ? 'on' : ''}" data-act="cmp" data-slot="1">[2]</button></div>`;
+      const dps = (x) => x.dmg * x.pellets * Math.min(x.rate, 15);
+      const acc = (x) => Math.round((1 - x.spread * 4) * 100);
+      const row = (label, v, max, txt, cv, better = 1, dec = 0) => {
+        let d = '';
+        if (c && cv != null) {
+          const diff = v - cv;
+          if (Math.abs(diff) > (dec ? 0.05 : 0.5)) d = `<span class="${diff * better > 0 ? 'cmp-up' : 'cmp-down'}">${diff > 0 ? '▲' : '▼'}${Math.abs(diff).toFixed(dec)}</span>`;
+          else d = '<span class="cmp-same">=</span>';
+        }
+        return `<div class="stat-row cmp"><span>${label}</span>${bar(v, max)}<span>${txt}</span>${d}</div>`;
+      };
       mid += `<div style="margin:6px 0">`;
-      mid += `<div class="stat-row"><span>Damage</span>${bar(s.dmg * s.pellets, 300)}<span>${Math.round(s.dmg)}${s.pellets > 1 ? '×' + s.pellets : ''}</span></div>`;
-      mid += `<div class="stat-row"><span>${melee ? 'Swing rate' : 'Fire rate'}</span>${bar(s.rate, 20)}<span>${s.rate.toFixed(1)}/s</span></div>`;
-      if (!melee && def.cat !== 'thrown') mid += `<div class="stat-row"><span>Magazine</span>${bar(s.mag, 100)}<span>${s.mag}</span></div>`;
-      mid += `<div class="stat-row"><span>${melee ? 'Reach' : 'Range'}</span>${bar(s.range, melee ? 3 : 150)}<span>${s.range.toFixed(melee ? 1 : 0)}m</span></div>`;
-      if (!melee && def.cat !== 'thrown') mid += `<div class="stat-row"><span>Accuracy</span>${bar(1 - s.spread * 4, 1)}<span>${Math.round((1 - s.spread * 4) * 100)}%</span></div>`;
-      if (s.splash) mid += `<div class="stat-row"><span>Blast</span>${bar(s.splash, 8)}<span>${s.splash}m</span></div>`;
-      if (s.pierce) mid += `<div class="stat-row"><span>Pierces</span>${bar(s.pierce, 6)}<span>${s.pierce}</span></div>`;
+      mid += row('Damage', s.dmg * s.pellets, 300, `${Math.round(s.dmg)}${s.pellets > 1 ? '×' + s.pellets : ''}`, c && c.dmg * c.pellets);
+      mid += row('Damage / sec', dps(s), 600, `${Math.round(dps(s))}`, c && dps(c));
+      mid += row(melee ? 'Swing rate' : 'Fire rate', s.rate, 20, `${s.rate.toFixed(1)}/s`, c && c.rate, 1, 1);
+      if (!melee && def.cat !== 'thrown') mid += row('Magazine', s.mag, 100, `${s.mag}`, c && c.def.cat !== 'melee' ? c.mag : null);
+      if (!melee && def.cat !== 'thrown' && s.reload) mid += row('Reload', s.reload, 6, `${s.reload.toFixed(1)}s`, c && c.reload ? c.reload : null, -1, 1);
+      mid += row(melee ? 'Reach' : 'Range', s.range, melee ? 3 : 150, `${s.range.toFixed(melee ? 1 : 0)}m`, c && (c.def.cat === 'melee') === melee ? c.range : null, 1, melee ? 1 : 0);
+      if (!melee && def.cat !== 'thrown') mid += row('Accuracy', acc(s), 100, `${acc(s)}%`, c && c.def.cat !== 'melee' && c.def.cat !== 'thrown' ? acc(c) : null);
+      if (s.splash) mid += row('Blast', s.splash, 8, `${s.splash.toFixed(1)}m`, c && c.splash ? c.splash : null, 1, 1);
+      if (s.pierce) mid += row('Pierces', s.pierce, 6, `${s.pierce}`, c ? c.pierce || 0 : null);
       mid += `</div><div>Held by: <b class="gold">${esc(this.holderLabel(inst.uid))}</b></div>`;
       mid += `<div style="margin:6px 0"><button class="pbtn" data-act="equip" data-slot="0">Equip as primary</button><button class="pbtn" data-act="equip" data-slot="1">Equip as secondary</button><button class="pbtn" data-act="rack">Put on the rack</button></div>`;
       const camp = run.survivors.filter((v) => v.status === 'camp' && v.hp > 0 && !v.dog);
@@ -498,7 +535,7 @@ export class UI {
       mid += `<h3 style="margin-top:10px">Workbench</h3>`;
       for (const k of upgradeKeys(def)) {
         const lv = inst.up?.[k] || 0;
-        const cost = upgradeCost(def, lv);
+        const cost = upgCost(run, def, lv);
         const maxed = lv >= UPG_MAX;
         mid += `<div class="upg"><span>${UPGRADES[k].name}</span><span class="pips">${'●'.repeat(lv)}${'○'.repeat(UPG_MAX - lv)}</span><span>${
           maxed ? '<span class="muted">maxed</span>' : `<button class="pbtn" data-act="upg" data-key="${k}" ${run.scrap < cost ? 'disabled' : ''}>Upgrade · ⚙ ${cost}</button>`
@@ -516,7 +553,7 @@ export class UI {
     right += `<h3 style="margin-top:10px">Survivors</h3>`;
     const alive = run.survivors.filter((v) => v.status !== 'dead');
     if (!alive.length) right += `<div class="muted">No one yet. Search the area for survivors.</div>`;
-    for (const v of alive) right += `<div>${esc(v.name)} <small class="muted">${v.dog ? 'dog · ' : ''}L${v.level}${v.status === 'away' ? ' · out' : ''}</small><br>&nbsp;&nbsp;${v.dog ? '<span class="muted">teeth</span>' : nm(v.weapon)}</div>`;
+    for (const v of alive) right += `<div>${esc(survivorTitle(v))} <small class="muted">${v.dog ? 'dog · ' : v.prof && v.prof !== 'citizen' ? PROFS[v.prof].name.toLowerCase() + ' · ' : ''}L${v.level}${v.status === 'away' ? ' · out' : ''}</small><br>&nbsp;&nbsp;${v.dog ? '<span class="muted">teeth</span>' : nm(v.weapon)}</div>`;
     right += `</div>`;
     return { title: 'WEAPON RACK', sub: this.resLine(), body: `<div class="cols"><div>${left}</div><div>${mid}</div><div>${right}</div></div>` };
   }
@@ -528,7 +565,8 @@ export class UI {
     if (!s) return { title: 'GONE', body: '' };
     const max = survivorMaxHp(s);
     const w = s.weapon != null ? weaponByUid(run, s.weapon) : null;
-    let body = `<div class="cols2"><div class="box"><h3>${esc(s.name)} — level ${s.level}</h3>`;
+    let body = `<div class="cols2"><div class="box"><h3>${esc(survivorTitle(s))} — level ${s.level}</h3>`;
+    if (!s.dog) body += `<div class="${s.prof === 'citizen' ? 'muted' : 'gold'}">${PROFS[s.prof]?.icon || ''} ${PROFS[s.prof]?.name || 'Citizen'}: ${esc(profSkill(s))}</div>`;
     body += `<div class="stat-row"><span>Health</span>${bar(s.hp, max)}<span>${Math.ceil(s.hp)}/${max}</span></div>`;
     body += `<div class="stat-row"><span>Experience</span>${bar(s.xp, xpToNext(s.level))}<span>${s.xp}/${xpToNext(s.level)}</span></div>`;
     if (!s.dog) body += `<div class="stat-row"><span>Aim</span>${bar(survivorAim(s), 1)}<span>${Math.round(survivorAim(s) * 100)}%</span></div>`;
@@ -551,14 +589,92 @@ export class UI {
     return { title: 'SURVIVOR', sub: this.resLine(), body };
   }
 
+  // The perk tree: branches in columns, tiers in rows.
+  panelPerks() {
+    const run = this.game.run;
+    const pts = run.player.perkPoints || 0;
+    const sel = this.panel.sel ? PERK[this.panel.sel] : null;
+    let body = `<div class="perk-grid" style="grid-template-columns:repeat(${BRANCHES.length}, 1fr)">`;
+    for (const b of BRANCHES) body += `<div class="perk-head" title="${esc(b.blurb)}">${b.icon} ${esc(b.name)}</div>`;
+    for (let tier = 1; tier <= 5; tier++)
+      for (const b of BRANCHES) {
+        body += '<div class="perk-cell">';
+        for (const p of PERKS.filter((q) => q.branch === b.id && q.tier === tier)) {
+          const own = hasPerk(run, p.id);
+          const open = p.req.every((r) => hasPerk(run, r));
+          const cls = own ? 'own' : open ? (pts ? 'can' : 'open') : 'locked';
+          body += `<button class="perk ${cls} ${sel === p ? 'sel' : ''}" data-act="perksel" data-id="${p.id}" title="${esc(p.desc)}">${esc(p.name)}</button>`;
+        }
+        body += '</div>';
+      }
+    body += '</div>';
+    body += '<div class="box perk-detail">';
+    if (sel) {
+      const own = hasPerk(run, sel.id);
+      const missing = sel.req.filter((r) => !hasPerk(run, r)).map((r) => PERK[r].name);
+      body += `<b class="gold">${esc(sel.name)}</b> — ${esc(sel.desc)} `;
+      if (own) body += '<span class="good">You have this perk.</span>';
+      else if (missing.length) body += `<span class="muted">Needs ${missing.map(esc).join(' and ')} first.</span>`;
+      else body += `<button class="pbtn big" data-act="perktake" ${pts ? '' : 'disabled'}>${pts ? 'Take this perk' : 'No perk points'}</button>`;
+    } else body += `<span class="muted">Pick a perk to see what it does. You earn a perk point every time you level up. Gold perks are yours; green ones you can take now.</span>`;
+    body += '</div>';
+    const owned = (run.player.perks || []).length;
+    return { title: 'PERKS', sub: `Level ${run.player.level} · <span class="${pts ? 'gold' : 'muted'}">${pts} perk point${pts === 1 ? '' : 's'} to spend</span> · ${owned} of ${PERKS.length} perks`, body };
+  }
+
+  // A companion in a building: orders, and trading weapons hand to hand.
+  panelSquad() {
+    const g = this.game;
+    const run = g.run;
+    const s = run.survivors.find((v) => v.id === this.panel.arg);
+    const a = g.level?.actors?.find((x) => x.rec === s);
+    if (!s || !a) return { title: 'GONE', body: '' };
+    const max = survivorMaxHp(s);
+    const wname = (uid) => {
+      const w = uid != null ? weaponByUid(run, uid) : null;
+      return w ? rname(WEAPONS[w.id]) : '<span class="muted">nothing</span>';
+    };
+    let body = `<div class="cols2"><div class="box"><h3>${esc(survivorTitle(s))} — level ${s.level}</h3>`;
+    if (!s.dog) body += `<div class="${s.prof === 'citizen' ? 'muted' : 'gold'}">${PROFS[s.prof]?.icon || ''} ${PROFS[s.prof]?.name || 'Citizen'}: ${esc(profSkill(s))}</div>`;
+    body += `<div class="stat-row"><span>Health</span>${bar(s.hp, max)}<span>${Math.ceil(s.hp)}/${max}</span></div>`;
+    body += `<div style="margin:8px 0">${a.mode === 'stay' ? 'Holding position.' : 'Following you.'}</div>`;
+    body += `<button class="pbtn big ${a.mode !== 'stay' ? 'on' : ''}" data-act="sqorder" data-mode="follow">Follow me</button>`;
+    body += `<button class="pbtn big ${a.mode === 'stay' ? 'on' : ''}" data-act="sqorder" data-mode="stay">Stay here</button>`;
+    body += `<div style="margin-top:10px"><button class="pbtn" data-act="heal" ${run.medkits <= 0 || s.hp >= max ? 'disabled' : ''}>Use a med kit (+60%) · ${run.medkits} left</button></div>`;
+    body += `<div class="muted" style="margin-top:8px">Press <b>G</b> to tell everyone to stay or follow at once. Anyone left behind on another floor waits there, and makes their own way back to camp if you leave.</div></div>`;
+    if (s.dog) {
+      body += `<div class="box"><h3>${esc(s.look.breed)}</h3><div class="muted">Dogs can't carry weapons.</div></div></div>`;
+      return { title: s.name.toUpperCase(), sub: 'Dog', body };
+    }
+    body += `<div class="box"><h3>Weapons</h3><div style="font-size:22px">They carry: ${wname(s.weapon)}</div>`;
+    const lo = run.loadout;
+    [
+      ['primary', 0],
+      ['secondary', 1],
+    ].forEach(([key, slot]) => {
+      const mine = lo[key];
+      if (mine == null && s.weapon == null) return;
+      const label = mine == null ? `Take their ${wname(s.weapon)} (${key})` : s.weapon == null ? `Give them your ${wname(mine)}` : `Swap your ${wname(mine)} for their ${wname(s.weapon)}`;
+      body += `<div><button class="pbtn" data-act="sqswap" data-slot="${slot}">${label}</button></div>`;
+    });
+    const found = (g.trip?.found || []).filter((it) => it.weapon && weaponByUid(run, it.weapon.uid) && !holderOf(run, it.weapon.uid));
+    if (found.length) {
+      body += `<h3 style="margin-top:8px">Found on this trip</h3><div class="wlist" style="max-height:26vh">`;
+      for (const it of found) body += `<button class="witem" data-act="sqgive" data-uid="${it.weapon.uid}"><span>${rname(WEAPONS[it.weapon.id])}</span><small>${CATEGORY[WEAPONS[it.weapon.id].cat]}</small></button>`;
+      body += `</div>`;
+    }
+    body += `<div class="muted" style="margin-top:8px">Survivors never run out of ammo; you do. If they die, their weapon is lost.</div></div></div>`;
+    return { title: 'YOUR PARTY', sub: this.resLine(), body };
+  }
+
   panelBarricade() {
     const run = this.game.run;
     const b = run.barricade;
     const max = barricadeMax(run);
     const missing = Math.max(0, max - b.hp);
-    const full = Math.ceil(missing / BARRICADE.hpPerScrap);
-    const part = Math.ceil(Math.min(60, missing) / BARRICADE.hpPerScrap);
-    const imp = BARRICADE.improveCost(b.level);
+    const full = Math.ceil(missing / hpPerScrap(run));
+    const part = Math.ceil(Math.min(60, missing) / hpPerScrap(run));
+    const imp = reinforceCost(run);
     let body = `<div class="box" style="max-width:720px;margin:auto">`;
     body += `<div class="stat-row"><span>Strength</span>${bar(b.hp, max)}<span>${Math.ceil(b.hp)}/${max}</span></div>`;
     body += `<div>Reinforcement level ${b.level} / ${BARRICADE.maxLevel}${b.hp <= 0 ? ' · <span class="bad">breached — zombies will walk straight in</span>' : ''}</div>`;
@@ -567,7 +683,7 @@ export class UI {
     if (b.level < BARRICADE.maxLevel)
       body += `<div style="margin-top:10px"><button class="pbtn big" data-act="improve" ${run.scrap < imp ? 'disabled' : ''}>Reinforce to level ${b.level + 1} (+${BARRICADE.perLevel} max strength) · ⚙ ${imp}</button></div>`;
     else body += `<div class="good" style="margin-top:10px">Fully reinforced.</div>`;
-    body += `<p class="muted">Each scrap restores ${BARRICADE.hpPerScrap} strength. Reinforcing adds sandbags and sheet metal, and the new strength comes ready-built.</p></div>`;
+    body += `<p class="muted">Each scrap restores ${+hpPerScrap(run).toFixed(1)} strength. Reinforcing adds sandbags and sheet metal, and the new strength comes ready-built.</p></div>`;
     return { title: 'THE BARRICADE', sub: this.resLine(), body };
   }
 
@@ -680,7 +796,7 @@ export class UI {
       right += `<h3>${L.icon} ${esc(loc.name)}</h3><div class="${L.landmark ? 'gold' : 'muted'}">${L.landmark ? `★ Landmark · ${L.name}` : L.name}</div>`;
       if (L.blurb) right += `<div class="muted" style="font-size:17px">${esc(L.blurb)}</div>`;
       right += `<div>Danger: <span class="skulls">${skulls(loc.difficulty)}</span><span class="muted">${skulls(6 - loc.difficulty).replace(/☠/g, '·')}</span></div>`;
-      right += `<div>Search time: <b class="gold">${loc.hours} hours</b></div>`;
+      right += `<div>Search time: <b class="gold">${searchHours(run, loc)} hours</b></div>`;
       right += `<div class="muted" style="font-size:17px">Often holds: ${this.lootHint(L)}</div>`;
       if (loc.floors > 1) right += `<div class="muted" style="font-size:17px">${loc.floors} floors</div>`;
       const lk = loc.lock;
@@ -696,11 +812,11 @@ export class UI {
       else if (run.phase !== 'day') right += `<div class="bad" style="margin-top:8px">It's getting dark. Nobody leaves camp now.</div>`;
       else {
         const camp = run.survivors.filter((v) => v.status === 'camp' && v.hp > 0);
-        right += `<div style="margin-top:8px"><button class="pbtn big" data-act="search" ${run.hours < loc.hours ? 'disabled' : ''}>Search it${P.comps.size ? ` with ${P.comps.size}` : ''} · ${loc.hours}h</button></div>`;
-        if (run.hours < loc.hours) right += `<div class="bad">Not enough daylight left.</div>`;
+        right += `<div style="margin-top:8px"><button class="pbtn big" data-act="search" ${run.hours < searchHours(run, loc) ? 'disabled' : ''}>Search it${P.comps.size ? ` with ${P.comps.size}` : ''} · ${searchHours(run, loc)}h</button></div>`;
+        if (run.hours < searchHours(run, loc)) right += `<div class="bad">Not enough daylight left.</div>`;
         if (camp.length) {
           right += `<div style="margin-top:6px">Bring along: `;
-          for (const v of camp) right += `<span class="chip ${P.comps.has(v.id) ? 'on' : ''}" data-act="comp" data-id="${v.id}">${v.dog ? '🐕 ' : ''}${esc(v.name.split(' ')[0])} L${v.level}</span>`;
+          for (const v of camp) right += `<span class="chip ${P.comps.has(v.id) ? 'on' : ''}" data-act="comp" data-id="${v.id}">${v.dog ? '🐕 ' : PROFS[v.prof]?.icon ? PROFS[v.prof].icon + ' ' : ''}${esc(v.name.split(' ')[0])} L${v.level}</span>`;
           right += `</div><div style="margin-top:8px">Send alone (back at dusk):</div>`;
           for (const v of camp) {
             if (v.dog) continue;
@@ -808,15 +924,15 @@ export class UI {
       const b = BIOMES[o.biome];
       right += `<h3 style="margin-top:8px">${b.icon} ${esc(o.name)}</h3><div class="muted">${b.name} · ${cityLine(c)}</div>`;
       right += `<div class="appraisal">${this.appraisalHtml(o.profile)}</div>`;
-      right += `<div><b>${o.miles}</b> miles by rail · coal needed: <b class="${run.coal >= o.coal ? 'good' : 'bad'}">${o.coal}</b> (you have ${run.coal})</div><div>Takes ${TRAVEL_HOURS} hours of daylight.</div>`;
-      const can = run.coal >= o.coal && run.phase === 'day' && run.hours >= TRAVEL_HOURS && !busy;
+      right += `<div><b>${o.miles}</b> miles by rail · coal needed: <b class="${run.coal >= tripCoal(run, o) ? 'good' : 'bad'}">${tripCoal(run, o)}</b> (you have ${run.coal})</div><div>Takes ${TRAVEL_HOURS} hours of daylight.</div>`;
+      const can = run.coal >= tripCoal(run, o) && run.phase === 'day' && run.hours >= TRAVEL_HOURS && !busy;
       right += `<button class="pbtn big" data-act="travel" data-i="${i}" ${can ? '' : 'disabled'}>Fire up the engine</button>`;
       if (busy) right += `<div class="bad">Wait for the survivors you sent out to come back.</div>`;
       else if (run.phase !== 'day' || run.hours < TRAVEL_HOURS) right += `<div class="bad">Not enough daylight to travel today.</div>`;
     } else {
       right += `<div class="muted">Moving on means new buildings and new survivors. Untriggered traps are packed up and come with you; keys don't open anything in the next town.</div>`;
       right += `<div style="margin-top:8px">Pick a destination. You have <b>${run.coal}</b> coal.</div><div class="ropts">`;
-      opts.forEach((o, k) => (right += `<div class="appraisal small" data-act="rsel" data-i="${k}"><b>${BIOMES[o.biome].icon} ${esc(o.name)}</b> · ${o.miles} mi · ◼ ${o.coal}<br>${this.appraisalHtml(o.profile)}</div>`));
+      opts.forEach((o, k) => (right += `<div class="appraisal small" data-act="rsel" data-i="${k}"><b>${BIOMES[o.biome].icon} ${esc(o.name)}</b> · ${o.miles} mi · ◼ ${tripCoal(run, o)}<br>${this.appraisalHtml(o.profile)}</div>`));
       right += `</div>`;
     }
     if (here) right += `<div class="muted" style="margin-top:8px;font-size:17px">Here: <b>${esc(run.locality.name)}</b> (${cityLine(here)}) — ${this.appraisalHtml(run.locality.profile)}</div>`;

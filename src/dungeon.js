@@ -469,6 +469,24 @@ export function enemyRoster(loc, rng, roomCount, scale = 1, brutesHere = true) {
   return out;
 }
 
+// A building held by raiders: a few armed people, and a straggler or two
+// of the dead they haven't cleared.
+function raiderRoster(loc, rng, nF) {
+  const n = Math.max(2, Math.round((2 + loc.difficulty * 0.6) * (nF > 1 ? 0.7 : 1)));
+  const out = [];
+  for (let i = 0; i < n; i++) out.push('raider');
+  if (rng.chance(0.5)) out.push('walker');
+  return out;
+}
+const RAIDER_GUNS = [
+  ['glock', 'm1911', 'revolver', 'doublebarrel', 'lever'],
+  ['pump', 'uzi', 'sks', 'beretta', 'hunting'],
+  ['ak47', 'm4a1', 'mp5', 'pump', 'spas12'],
+];
+function raiderGun(loc, rng) {
+  return rng.pick(RAIDER_GUNS[Math.min(2, Math.floor((loc.difficulty - 1) / 2))]);
+}
+
 // ---------------------------------------------------------------- the building
 export function generateBuilding(loc, biome) {
   const L = LOCATION_TYPES[loc.type];
@@ -739,7 +757,7 @@ function makeFloor(S, f) {
 
   // ---------- a boarded-up room with the dead shut inside ----------
   let boarded = null;
-  if (rng.chance(Math.min(0.7, 0.18 + 0.1 * loc.difficulty) / Math.sqrt(nF))) {
+  if (!loc.empty && !loc.raiders && rng.chance(Math.min(0.7, 0.18 + 0.1 * loc.difficulty) / Math.sqrt(nF))) {
     const cands = real.filter((r) => !r.stairs && !r.vault && !r.corridor && !r.lobby && !r.entry && !r.hub && degree(r) === 1 && r.area >= 2 && r.area <= 9);
     for (const v of rng.shuffle(cands)) {
       const dd = doors.find((q) => q.a === v.id || q.b === v.id);
@@ -1443,7 +1461,8 @@ function makeFloor(S, f) {
   }
 
   // ---------- zombies ----------
-  const roster = enemyRoster(loc, rng, real.length, nF > 1 ? 0.62 : 1, f === nF - 1);
+  // some places are, by luck, empty of the dead
+  const roster = loc.empty ? [] : loc.raiders ? raiderRoster(loc, rng, nF) : enemyRoster(loc, rng, real.length, nF > 1 ? 0.62 : 1, f === nF - 1);
   const spawnTiles = rng.shuffle(allFloor.filter(([x, y]) => doorDist[idx(x, y)] > 3 && !blocked[idx(x, y)]));
   const fallback = rng.shuffle(allFloor.filter(([x, y]) => doorDist[idx(x, y)] > 1 && !blocked[idx(x, y)]));
   const spawnList = spawnTiles.length > 4 ? spawnTiles : fallback.length ? fallback : allFloor;
@@ -1462,7 +1481,7 @@ function makeFloor(S, f) {
     if (!chosen) chosen = spawnList[si++ % spawnList.length];
     taken2.push(chosen);
     const c = center(chosen[0], chosen[1]);
-    out.enemies.push({ type, x: c.x + rng.range(-0.7, 0.7), z: c.z + rng.range(-0.7, 0.7) });
+    out.enemies.push({ type, x: c.x + rng.range(-0.7, 0.7), z: c.z + rng.range(-0.7, 0.7), gun: type === 'raider' ? raiderGun(loc, rng) : undefined });
     // a lurker lies in a pool of blood among the bones
     if (type === 'lurker') {
       const e = out.enemies[out.enemies.length - 1];
@@ -1482,7 +1501,7 @@ function makeFloor(S, f) {
     }
   }
   // a nest: a mound of flesh the dead crawl out of until it's destroyed
-  if (d >= 2 && rng.chance(Math.min(0.6, 0.15 + 0.08 * d) / Math.sqrt(nF))) {
+  if (!loc.empty && !loc.raiders && d >= 2 && rng.chance(Math.min(0.6, 0.15 + 0.08 * d) / Math.sqrt(nF))) {
     const rs = rng.shuffle(usable.filter((r) => !r.corridor && !r.entry && r.area >= 4));
     for (const r of rs) {
       const p = freeSpot(r, 4);
