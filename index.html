@@ -32,7 +32,14 @@
   #fade { background: #000; opacity: 0; }
   #grain { opacity: 0.07; mix-blend-mode: overlay; background-size: 200px 200px; animation: grain 0.5s steps(4) infinite; }
   @keyframes grain { 0% { background-position: 0 0; } 25% { background-position: -60px 40px; } 50% { background-position: 80px -30px; } 75% { background-position: -40px -90px; } 100% { background-position: 0 0; } }
-  #scan { background: repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0px, rgba(0,0,0,0.12) 1px, transparent 1px, transparent 3px); opacity: 0.5; }
+  body.post #grain { display: none; }
+  #letterbox .lb { position: fixed; left: 0; right: 0; height: 0; background: #000; transition: height 0.8s ease; z-index: 4; pointer-events: none; overflow: hidden; }
+  #letterbox .top { top: 0; }
+  #letterbox .bottom { bottom: 0; display: flex; align-items: center; justify-content: flex-end; }
+  #letterbox span { color: rgba(232,220,192,0.4); font-size: 18px; letter-spacing: 4px; margin-right: 36px; opacity: 0; transition: opacity 0.8s; }
+  body.cine #letterbox .lb { height: 11.5vh; }
+  body.cine #letterbox span { opacity: 1; }
+  body.cine #hud > :not(#banner) { visibility: hidden; }
 
   /* hiding masks */
   .mask { display: none; }
@@ -72,6 +79,13 @@
   .bar .label { position: absolute; left: 8px; top: -2px; font-size: 21px; color: #fff; }
   #hpText { position: absolute; right: 8px; top: -2px; font-size: 21px; }
   .bar.st { height: 12px; }
+  #scope { position: fixed; inset: 0; display: none; pointer-events: none; z-index: 4; background: radial-gradient(circle at 50% 50%, transparent 0, transparent 41vmin, rgba(0,0,0,0.55) 42vmin, #000 44vmin); }
+  #scope svg { position: absolute; left: 50%; top: 50%; width: 88vmin; height: 88vmin; transform: translate(-50%, -50%); }
+  #scope::after { content: ''; position: absolute; left: 50%; top: 50%; width: 88vmin; height: 88vmin; transform: translate(-50%, -50%); border-radius: 50%; box-shadow: inset 0 0 6vmin 2vmin rgba(0,0,0,0.85); }
+  body.scoped #scope { display: block; }
+  body.travel #hud > *:not(#banner) { display: none !important; }
+  body.scoped #cross { display: none; }
+  #battery { font-size: 18px; color: var(--bone-dim); letter-spacing: 1px; }
   #status { font-size: 20px; color: var(--bone-dim); margin-top: 5px; height: 20px; letter-spacing: 2px; }
 
   #inv { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 8px; }
@@ -91,7 +105,7 @@
   #prompt b { color: var(--gold); border: 1px solid var(--gold); padding: 0 6px; margin-right: 6px; font-weight: normal; }
   #prompt i { color: var(--bone-dim); font-style: normal; }
 
-  #msgs { position: absolute; left: 50%; top: 16%; transform: translateX(-50%); width: 80vw; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  #msgs { position: absolute; left: 50%; top: 21.5%; transform: translateX(-50%); width: min(64vw, 900px); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .msg { font-size: 26px; color: var(--bone); background: rgba(0,0,0,0.35); padding: 0 12px; }
   .msg.gold { color: var(--gold); }
   .msg.good { color: #b6e08a; }
@@ -99,7 +113,7 @@
   .msg.dim { color: var(--bone-dim); }
   .msg.diamond { color: var(--ice); }
 
-  #banner { position: absolute; left: 0; right: 0; top: 30%; text-align: center; opacity: 0; transition: opacity 0.8s; }
+  #banner { position: absolute; left: 0; right: 0; top: 35%; text-align: center; opacity: 0; transition: opacity 0.8s; }
   #banner.show { opacity: 1; }
   #bannerT { font-family: var(--title); font-size: clamp(42px, 8vw, 92px); color: var(--blood); letter-spacing: 8px; text-shadow: 0 0 20px #000, 0 0 40px #400, 3px 3px 0 #000; }
   #bannerS { font-size: 32px; color: var(--bone); margin-top: 4px; }
@@ -126,6 +140,7 @@
   .settings { display: grid; grid-template-columns: auto 220px; gap: 8px 16px; font-size: 24px; margin: 12px; align-items: center; text-align: left; pointer-events: auto; }
   .settings input[type=range] { accent-color: var(--blood); }
   .settings input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--blood); }
+  .settings select { font: inherit; font-size: 20px; background: #1a1612; color: #e8dcc0; border: 1px solid #5a4a3a; padding: 2px 6px; }
 
   /* shop */
   #shop { background: radial-gradient(ellipse at center, rgba(30,16,8,0.9), rgba(0,0,0,0.96)); }
@@ -164,6 +179,118 @@
   #goStats .best b { color: var(--ice); }
 
   @media (max-width: 900px) { #shopItems { grid-template-columns: repeat(3, 1fr); } .controls { grid-template-columns: auto auto; } }
+
+  /* ---------- camp HUD ---------- */
+  #dayLine { font-family: var(--title); font-size: 34px; color: var(--bone); letter-spacing: 3px; }
+  #phaseLine { font-size: 24px; color: var(--gold); }
+  #phaseLine.dusk { color: #ff9a5a; } #phaseLine.night { color: #ff5a4a; }
+  #locLine { font-size: 20px; color: var(--bone-dim); margin-bottom: 4px; }
+  #res { display: flex; gap: 16px; font-size: 26px; }
+  #res span b { font-weight: normal; }
+  .r-scrap { color: #c8b890; } .r-coal { color: #9aa0a8; } .r-med { color: #ff7a6a; } .r-food { color: #c8d07a; } .r-food.short { color: #ff5a4a; }
+  .msg.food { color: #c8d07a; }
+  #squad { margin-top: 6px; width: 200px; }
+  .sq { font-size: 17px; display: grid; grid-template-columns: 1fr 70px; gap: 4px; align-items: center; color: var(--bone); }
+  .sq .hb { height: 6px; background: #300; border: 1px solid #000; } .sq .hb i { display: block; height: 100%; background: #c8302a; }
+  .sq.away { color: var(--bone-dim); font-style: italic; }
+  #barBox { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: min(460px, 50vw); text-align: center; display: none; }
+  #barBox.show { display: block; }
+  #barBox .bar { height: 16px; }
+  #barFill { background: linear-gradient(180deg, #c89a5a, #6a4420); }
+  #barFill.low { background: linear-gradient(180deg, #e04a2a, #6a0a06); }
+  #waveText { font-size: 24px; color: #ff6a5a; }
+  #lvlLine { font-size: 24px; color: var(--ice); display: flex; justify-content: space-between; }
+  .bar.xp { height: 7px; margin-top: 2px; } #xpFill { background: linear-gradient(90deg, #3a8ac8, #6fd6ff); }
+  #wname { font-size: 24px; letter-spacing: 1px; }
+  #trapHud { position: absolute; left: 50%; bottom: 104px; transform: translateX(-50%); display: none; background: var(--panel); border: 2px solid var(--edge); padding: 6px 12px; text-align: center; font-size: 20px; }
+  #trapHud.show { display: block; }
+  #trapHud .tsel { display: flex; gap: 8px; justify-content: center; margin-bottom: 4px; }
+  #trapHud .t { padding: 2px 10px; border: 1px solid var(--edge); color: var(--bone-dim); }
+  #trapHud .t.on { border-color: var(--gold); color: var(--bone); }
+  #trapHud .t.none { opacity: 0.4; }
+  .msg.rarity-common { color: #c9c1af; } .msg.rarity-uncommon { color: #6fd05a; } .msg.rarity-rare { color: #4aa8ff; }
+  .msg.rarity-epic { color: #c46aff; } .msg.rarity-legendary { color: #ffae2a; }
+  .msg.level { color: var(--ice); }
+
+  /* ---------- management panels ---------- */
+  #panel { background: radial-gradient(ellipse at center, rgba(24,16,10,0.94), rgba(0,0,0,0.97)); justify-content: flex-start; padding: 3vh 2vw; overflow-y: auto; }
+  #panelTitle { font-family: var(--title); color: #c98a3a; font-size: clamp(32px, 4.5vw, 54px); letter-spacing: 5px; margin: 0; }
+  #panelSub { font-size: 22px; color: var(--bone-dim); margin-bottom: 10px; }
+  #panelBody { width: min(1180px, 96vw); text-align: left; font-size: 20px; pointer-events: auto; }
+  .pbtn { pointer-events: auto; font-family: var(--mono); font-size: 20px; color: var(--bone); background: linear-gradient(180deg, #2a1a10, #140c06); border: 1px solid #5a3a20; padding: 3px 12px; margin: 3px 4px 3px 0; cursor: pointer; }
+  .pbtn:hover:not(:disabled) { border-color: var(--gold); color: #fff; }
+  .pbtn:disabled { opacity: 0.4; cursor: default; }
+  .pbtn.big { font-size: 24px; padding: 6px 18px; }
+  .pbtn.warn { border-color: #8a2a1a; }
+  .cols { display: grid; grid-template-columns: 1.1fr 1.4fr 0.9fr; gap: 16px; }
+  .cols2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+  .box { background: rgba(0,0,0,0.45); border: 1px solid var(--edge); padding: 8px 12px; }
+  .box h3 { margin: 0 0 6px; font-family: var(--title); font-weight: normal; color: var(--bone); font-size: 24px; }
+  .wlist { max-height: 52vh; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+  .witem { pointer-events: auto; text-align: left; background: rgba(30,20,12,0.7); border: 1px solid #3a2a1c; color: var(--bone); font-family: var(--mono); font-size: 19px; padding: 2px 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  .witem small { color: var(--bone-dim); font-size: 16px; }
+  .witem.sel { border-color: var(--gold); background: rgba(70,46,20,0.8); }
+  .stat-row { display: grid; grid-template-columns: 120px 1fr 80px; gap: 8px; align-items: center; font-size: 19px; }
+  .sbar { height: 9px; background: #1a120c; border: 1px solid #000; } .sbar i { display: block; height: 100%; background: linear-gradient(90deg, #8a6a3a, #e0b060); }
+  .upg { display: grid; grid-template-columns: 110px 90px 1fr; gap: 6px; align-items: center; font-size: 19px; }
+  .pips { color: var(--gold); letter-spacing: 2px; }
+  .ammo-grid { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; font-size: 18px; color: var(--bone-dim); }
+  .ammo-grid b { color: var(--bone); font-weight: normal; text-align: right; }
+  .muted { color: var(--bone-dim); } .good { color: #b6e08a; } .bad { color: #ff6a5a; } .gold { color: var(--gold); }
+  #hud.dim #msgs, #hud.dim #banner { display: none; }
+  .mapwrap { position: relative; width: min(100%, 82vh); aspect-ratio: 4 / 3; border: 3px solid #4a3220; background: #c8b48a; overflow: hidden; }
+  .mapwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .loc { pointer-events: auto; position: absolute; transform: translate(-50%, -50%); font-size: 22px; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #3a2410; background: #e8d8b0; color: #3a2410; cursor: pointer; font-family: var(--mono); display: flex; align-items: center; justify-content: center; }
+  .loc .badge { position: absolute; top: -10px; right: -12px; font-size: 14px; filter: drop-shadow(0 0 2px #000); }
+  .loc .badge.key { right: auto; left: -12px; }
+  .loc .badge.have { filter: drop-shadow(0 0 4px #6fd05a); }
+  .loc.sel { border-color: #b3150f; box-shadow: 0 0 0 3px rgba(179,21,15,0.5); }
+  .loc.done { opacity: 0.45; background: #a89878; }
+  .loc.claim { background: #d0e0b0; }
+  .loc .lbl { position: absolute; top: 38px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 15px; color: #2a1a0a; background: rgba(232,216,176,0.8); padding: 0 3px; }
+  .loc.landmark { width: 46px; height: 46px; font-size: 26px; border: 3px solid #b8860b; background: #f4e2a8; box-shadow: 0 0 10px rgba(232,180,40,0.6); }
+  .loc.landmark .lbl { top: 46px; font-weight: bold; color: #5a3a00; }
+  .loc.landmark.sel { border-color: #b3150f; }
+  .camp-dot { position: absolute; transform: translate(-50%, -50%); font-size: 26px; color: #6a1a10; }
+  .cols2.regional { grid-template-columns: 1fr; }
+  .mapwrap.us { aspect-ratio: 16 / 9; width: min(100%, 100vh); margin: auto; background: #7d8f8c; }
+  .loc.city { width: 26px; height: 26px; font-size: 15px; background: #f0e2b8; }
+  .loc.city.s2 { width: 30px; height: 30px; }
+  .loc.city.s3 { width: 34px; height: 34px; font-size: 18px; }
+  .loc.city .lbl { top: auto; bottom: 100%; margin-bottom: 2px; font-size: 14px; }
+  .camp-dot.here { font-size: 22px; text-shadow: 0 0 6px #f0e2b8; }
+  .note-paper { max-width: 560px; margin: 20px auto; padding: 34px 38px; background: linear-gradient(170deg, #e8dcc0, #cbb98e); color: #2a1a10; font: italic 24px/1.4 'Georgia', serif; box-shadow: 0 10px 40px rgba(0,0,0,0.7); transform: rotate(-1.2deg); white-space: pre-wrap; }
+  .ropts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px; }
+  .ropts .appraisal { cursor: pointer; }
+  .ropts .appraisal:hover { outline: 1px solid #b3150f; }
+  .skulls { color: #b3150f; letter-spacing: 1px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .appraisal { font-size: 19px; margin: 6px 0; line-height: 1.15; }
+  .appraisal.small { font-size: 17px; border-top: 1px solid #2a1a10; padding-top: 4px; }
+  .ammo-grid small { font-size: 14px; }
+  .tabs .pbtn.on, .pbtn.on { border-color: var(--gold); color: #fff; }
+  .chip { pointer-events: auto; display: inline-block; border: 1px solid #5a3a20; padding: 1px 8px; margin: 2px; cursor: pointer; font-size: 18px; }
+  .chip.on { border-color: #6fd05a; color: #b6e08a; }
+  .report div { font-size: 22px; margin: 3px 0; }
+  .stat-row.cmp { grid-template-columns: 120px 1fr 90px 64px; }
+  .cmp-up { color: #6fd05a; } .cmp-down { color: #e0503a; } .cmp-same { color: #7a6a5a; }
+  .cmp-line { margin: 6px 0 2px; font-size: 18px; } .cmp-line .pbtn { font-size: 15px; padding: 0 6px; }
+  .perkpt { color: #ffd84a; margin-left: 8px; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.45; } }
+  .perk-grid { display: grid; gap: 4px 6px; max-width: 1240px; margin: 0 auto; }
+  .perk-head { text-align: center; font-size: 18px; color: var(--gold); border-bottom: 1px solid #5a3a20; padding-bottom: 2px; }
+  .perk-cell { display: flex; flex-direction: column; gap: 3px; min-height: 30px; }
+  .perk { pointer-events: auto; font-family: var(--mono); font-size: 14px; line-height: 1.1; padding: 4px 3px; cursor: pointer; border: 1px solid #3a2a1a; background: #120c08; color: #6a5a4a; }
+  .perk.open { color: #b8a890; border-color: #5a3a20; }
+  .perk.can { color: #d8f0c0; border-color: #6fd05a; background: #142210; }
+  .perk.own { color: #1a1206; background: linear-gradient(180deg, #e8c050, #b8862a); border-color: #ffd84a; }
+  .perk.sel { box-shadow: 0 0 0 2px #b3150f; }
+  .perk-detail { max-width: 1240px; margin: 8px auto 0; font-size: 20px; min-height: 30px; }
+  .rail-text { font-size: 22px; line-height: 1.35; margin: 4px 0 14px; }
+  .rail-opts { display: flex; flex-direction: column; gap: 6px; }
+  .rail-opt { text-align: left; width: 100%; }
+  .turret-opt { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border-bottom: 1px solid #2a1a10; padding: 6px 0; }
+  @media (max-width: 900px) { .cols, .cols2 { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -171,33 +298,40 @@
 
 <div class="overlay mask" id="hideMask"></div>
 <div class="overlay" id="vignette"></div>
-<div class="overlay" id="scan"></div>
 <div class="overlay" id="grain"></div>
 <div class="overlay" id="hurt"></div>
+<div id="letterbox"><div class="lb top"></div><div class="lb bottom"><span>click to skip</span></div></div>
 
 <div id="hud">
   <div class="tl">
-    <div id="lvl">LEVEL 1</div>
-    <div class="stat d"><span class="ico">◆</span><span id="dia">0 / 1</span></div>
-    <div class="stat g"><span class="ico">⛁</span><span id="gold">0</span></div>
+    <div id="dayLine">DAY 1</div>
+    <div id="phaseLine"></div>
+    <div id="locLine"></div>
+    <div id="res"></div>
   </div>
+  <div id="barBox"><div id="waveText"></div><div class="bar"><div class="fill" id="barFill"></div><span class="label">BARRICADE</span><span id="barText" style="position:absolute;right:8px;top:-4px;font-size:18px"></span></div></div>
   <div class="tr">
     <div class="mini-frame"><canvas id="minimap" width="190" height="190"></canvas></div>
-    <div class="mini-hint">[M] map</div>
+    <div class="mini-hint" id="miniHint">[M] map</div>
+    <div id="squad"></div>
   </div>
   <div class="bl">
-    <div id="lives">☠☠☠</div>
+    <div id="lvlLine"><span id="lvlText">LEVEL 1</span><span id="xpText"></span></div>
+    <div class="bar xp"><div class="fill" id="xpFill"></div></div>
     <div class="bar"><div class="fill" id="hpFill"></div><span class="label">HEALTH</span><span id="hpText">100 / 100</span></div>
     <div class="bar st"><div class="fill" id="stFill"></div></div>
     <div id="status"></div>
+    <div id="battery"></div>
   </div>
+  <div id="trapHud"></div>
   <div id="inv"></div>
   <div class="br">
-    <div class="gunico">REVOLVER</div>
-    <div id="ammo">6 / 6</div>
-    <div id="ammoSub">6 spare</div>
+    <div id="wname">GLOCK 17</div>
+    <div id="ammo">17 / 17</div>
+    <div id="ammoSub">48 spare</div>
   </div>
   <div id="cross"></div>
+  <div id="scope"><svg viewBox="-100 -100 200 200" preserveAspectRatio="xMidYMid meet"><g stroke="#000" fill="none"><line x1="-100" y1="0" x2="-6" y2="0" stroke-width="0.9"/><line x1="6" y1="0" x2="100" y2="0" stroke-width="0.9"/><line x1="0" y1="-100" x2="0" y2="-6" stroke-width="0.9"/><line x1="0" y1="6" x2="0" y2="100" stroke-width="0.9"/><line x1="-100" y1="0" x2="-60" y2="0" stroke-width="3"/><line x1="60" y1="0" x2="100" y2="0" stroke-width="3"/><line x1="0" y1="60" x2="0" y2="100" stroke-width="3"/></g><g fill="#000"><circle cx="-20" cy="0" r="1"/><circle cx="-35" cy="0" r="1"/><circle cx="20" cy="0" r="1"/><circle cx="35" cy="0" r="1"/><circle cx="0" cy="20" r="1"/><circle cx="0" cy="35" r="1"/><circle cx="0" cy="-20" r="1"/></g><circle cx="0" cy="0" r="0.8" fill="#b81a12"/></svg></div>
   <div id="prompt"></div>
   <div id="msgs"></div>
   <div id="banner"><div id="bannerT"></div><div id="bannerS"></div></div>
@@ -207,23 +341,24 @@
 
 <div class="screen show" id="title">
   <h1>DREAD DEPTHS</h1>
-  <h2>How deep will you descend before the dark claims you?</h2>
-  <p>Each level hides diamonds in a lightless labyrinth. Find them all, return to the sanctuary and descend. Gold scattered in the dark buys survival from the Keeper. You have three lives.</p>
-  <button class="btn" id="startBtn">DESCEND</button>
+  <h2>The last train out. How many nights can your camp hold?</h2>
+  <p>Your camp is pitched beside a stalled train. By day, scavenge the buildings around you, recruit survivors, arm them, build up the barricade and mount turrets on the train cars. By night, the dead may come. When you have enough coal, move the train on. You only get one life.</p>
+  <div><button class="btn" id="startBtn">NEW RUN</button><button class="btn" id="continueBtn" style="display:none">CONTINUE</button></div>
   <div id="bestLine"></div>
   <div class="controls">
-    <b>WASD</b><span>Move</span><b>Mouse</b><span>Look</span>
+    <b>WASD</b><span>Move</span><b>Mouse</b><span>Look / aim</span>
     <b>Shift</b><span>Run</span><b>Space</b><span>Jump</span>
-    <b>C</b><span>Crouch (quiet)</span><b>E</b><span>Interact / hide</span>
-    <b>F</b><span>Flashlight</span><b>Click</b><span>Fire revolver</span>
-    <b>R</b><span>Reload</span><b>H</b><span>Use med kit</span>
-    <b>T</b><span>Set bear trap</span><b>M / Tab</b><span>Map</span>
+    <b>C</b><span>Crouch (quiet)</span><b>E</b><span>Interact</span>
+    <b>Click</b><span>Attack (hold for auto)</span><b>R</b><span>Reload</span>
+    <b>1 / 2 / Q / Wheel</b><span>Switch weapon</span><b>H</b><span>Use med kit</span>
+    <b>T</b><span>Place traps (camp, by day)</span><b>F</b><span>Flashlight</span>
+    <b>M / Tab</b><span>Map (in buildings)</span><b>Esc</b><span>Pause</span>
   </div>
   <div class="bestiary">
-    <div class="beast"><h3>Grunt</h3><div>Patrols the halls. Sees well, almost as fast as you — but can be outrun. Hide before it sees you.</div></div>
-    <div class="beast"><h3>Angel</h3><div>Moves only when unseen. Keep your eyes — and your light — on it. Cannot be killed. Its touch is death.</div></div>
-    <div class="beast"><h3>Blind Brute</h3><div>Hunts by sound. Walk softly, crouch, avoid broken glass. Shoot it and it charges. It hates Grunts.</div></div>
-    <div class="beast"><h3>Blood Hound</h3><div>Its shriek summons the others. Hiding will not fool a hound that is already on your trail.</div></div>
+    <div class="beast"><h3>Walkers &amp; Runners</h3><div>The common dead. Walkers shamble, runners sprint. Later hordes bring bloaters, rotters and riot-armoured zombies.</div></div>
+    <div class="beast"><h3>Grunt</h3><div>Hunts by sight in the halls and marches with the horde at night.</div></div>
+    <div class="beast"><h3>Blood Hound</h3><div>Its shriek whips the whole horde into a frenzy. Hiding spots won't fool one on your trail.</div></div>
+    <div class="beast"><h3>Blind Brute</h3><div>Hunts by sound and tears through barricades. Shoot it and it charges.</div></div>
   </div>
 </div>
 
@@ -234,32 +369,24 @@
     <span>Master volume</span><input type="range" id="setMaster" min="0" max="1" step="0.01" />
     <span>Music volume</span><input type="range" id="setMusic" min="0" max="1" step="0.01" />
     <span>Effects volume</span><input type="range" id="setSfx" min="0" max="1" step="0.01" />
-    <span>Retro pixel rendering</span><input type="checkbox" id="setRetro" />
+    <span>Graphics</span><select id="setQuality"><option value="cinematic">Cinematic</option><option value="balanced">Balanced</option><option value="retro">Retro (pixelated)</option></select>
   </div>
   <button class="btn" id="resumeBtn">RESUME</button>
-  <button class="btn" id="quitBtn">ABANDON RUN</button>
-  <div class="controls">
-    <b>WASD</b><span>Move</span><b>Shift</b><span>Run</span>
-    <b>Space</b><span>Jump</span><b>C</b><span>Crouch</span>
-    <b>E</b><span>Interact / hide</span><b>F</b><span>Flashlight</span>
-    <b>Click</b><span>Fire</span><b>R</b><span>Reload</span>
-    <b>H</b><span>Med kit</span><b>T</b><span>Bear trap</span>
-  </div>
+  <button class="btn" id="quitBtn">SAVE &amp; QUIT</button>
+  <p style="font-size:18px">The run is saved each morning and whenever you are back in camp by day.</p>
 </div>
 
-<div class="screen" id="shop">
-  <h1>THE KEEPER'S WARES</h1>
-  <div class="keeper-quote">"Gold for flesh, gold for breath. Everything has its price down here."</div>
-  <div class="shop-head"><span id="shopLevel">Level 1</span><span>Your gold: <span class="g" id="shopGold">0</span></span></div>
-  <div id="shopItems"></div>
-  <p>Click an item or press its number to buy. Prices rise the deeper you go.</p>
-  <button class="btn" id="shopClose">LEAVE [E]</button>
+<div class="screen" id="panel">
+  <h1 id="panelTitle"></h1>
+  <div id="panelSub"></div>
+  <div id="panelBody"></div>
+  <button class="btn" id="panelClose">CLOSE [E]</button>
 </div>
 
 <div class="screen" id="mapScreen">
   <h2>MAP</h2>
   <canvas id="bigmap"></canvas>
-  <div class="legend"><span style="color:#ffe8a0">▲ You</span><span style="color:#5fd8ff">◆ Diamond</span><span style="color:#3f7a46">■ Sanctuary</span><span style="color:#ff5a3a">■ Hatch</span><span style="color:#8a1c1c">■ Pit</span><span style="color:#8a9aa8">■ Glass</span></div>
+  <div class="legend"><span style="color:#ffe8a0">▲ You</span><span style="color:#7affa0">■ Way out</span><span style="color:#f0b43a">● Unsearched</span><span style="color:#6fd05a">● Survivor</span><span style="color:#6fd6ff">● Companion</span><span style="color:#8a1c1c">■ Pit</span></div>
   <div class="legend" id="mapLegend"></div>
 </div>
 
@@ -270,9 +397,9 @@
 </div>
 
 <div class="screen" id="gameover">
-  <h1>THE DARK CLAIMS YOU</h1>
+  <h1>THE CAMP FALLS SILENT</h1>
   <div id="goStats"></div>
-  <button class="btn" id="retryBtn">DESCEND AGAIN</button>
+  <button class="btn" id="retryBtn">NEW RUN</button>
 </div>
 
 <script>
