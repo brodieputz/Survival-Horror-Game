@@ -81,8 +81,11 @@ function humanoid(o) {
     sh.add(capsule(0.05, 0.2, o.sleeves === false ? skin : top, 0, -0.15, 0));
     const fore = pivot(sh, 0, -0.29, 0);
     fore.add(capsule(0.042, 0.19, o.longSleeves ? top : skin, 0, -0.135, 0));
-    fore.add(block(0.07, 0.09, 0.035, skin, 0, -0.3, 0.005)); // hand
-    arms.push({ sh, fore, s });
+    // the hand hangs from a wrist so it can droop, grip and point
+    const wrist = pivot(fore, 0, -0.265, 0);
+    wrist.add(block(0.07, 0.09, 0.035, skin, 0, -0.035, 0.005));
+    wrist.add(capsule(0.014, 0.03, skin, -s * 0.032, -0.03, 0.022)); // thumb
+    arms.push({ sh, fore, wrist, s });
   }
   const legs = [];
   if (!o.noLegs) {
@@ -91,8 +94,10 @@ function humanoid(o) {
       hip.add(capsule(0.072 * Math.sqrt(build), 0.3, pants, 0, -0.23, 0));
       const knee = pivot(hip, 0, -0.46, 0);
       knee.add(capsule(0.056, 0.32, pants, 0, -0.22, 0));
-      knee.add(block(0.1, 0.08, 0.25, boots, 0, -0.44, 0.045));
-      legs.push({ hip, knee, s });
+      // the foot turns at the ankle: heel strike, flat, toe-off
+      const ankle = pivot(knee, 0, -0.42, 0);
+      ankle.add(block(0.1, 0.08, 0.25, boots, 0, -0.02, 0.045));
+      legs.push({ hip, knee, ankle, s });
     }
   }
   return { root, hips, torso, head, jaw, arms, legs, hipY, height: HUMAN_HEIGHT, baseLean: o.lean, build, mats: { skin, shirt, pants } };
@@ -222,8 +227,6 @@ export function makeHuman(look) {
   }
   // backpack
   m.torso.add(block(0.28, 0.32, 0.12, L({ color: 0x3a3424, map: tex('fabric', 42) }), 0, 0.32, -0.17));
-  const right = m.arms.find((a) => a.s === 1);
-  m.gunMount = pivot(right.fore, 0, -0.3, 0.03);
   return m;
 }
 

@@ -224,7 +224,7 @@ export class Combat {
       if (d > radius + e.radius) continue;
       const f = 1 - Math.min(1, d / (radius + e.radius)) * 0.6;
       if (!lvl.world.los(pos.x, pos.z, e.pos.x, e.pos.z) && d > 1.5) continue;
-      e.hit(dmg * f, src, { explosive: true, noCrawler });
+      e.hit(dmg * f, src, { explosive: true, noCrawler, at: pos });
       if (fire) e.ignite(4, 22, src);
       if (e.alive && e.type !== 'brute') {
         const k = (1 - d / (radius + 1)) * 1.4;
@@ -240,7 +240,7 @@ export class Combat {
     for (const a of lvl.actors || []) {
       if (!a.alive) continue;
       const d = dist2D(pos.x, pos.z, a.pos.x, a.pos.z);
-      if (d < radius) a.damage(dmg * 0.3 * (1 - d / radius), 'explosion');
+      if (d < radius) a.damage(dmg * 0.3 * (1 - d / radius), 'explosion', { pos });
     }
     lvl.onExplosion?.(pos, radius, src);
     if (fire) this.addFire(pos, radius * 0.8, 7, src);

@@ -71,6 +71,9 @@ export function makeGunModel(def, vm = false) {
   let spin = null;
   let flame = null;
   let sight = null; // { y, rear, front, kind }
+  // where the hands go: the pistol grip (z, rake) and any vertical fore grip
+  let grip = { z: 0.06, ang: 0.28 };
+  let foreGrip = null;
   let scopeInfo = null;
   const port = new THREE.Object3D(); // where spent casings fly from
   const B = (w, h, d, mat, x, y, z, parent = g) => {
@@ -91,6 +94,7 @@ export function makeGunModel(def, vm = false) {
     t.rotation.x = 0.25;
   };
   const pistolGrip = (z = 0.06, h = 0.12, mat = m.poly, ang = 0.28) => {
+    grip = { z, ang };
     const gp = B(0.036, h, 0.052, mat, 0, -h / 2 + 0.005, z);
     gp.rotation.x = ang;
     // finger grooves / stippling suggested by a slimmer front strap
@@ -358,6 +362,7 @@ export function makeGunModel(def, vm = false) {
       else magBox(-0.04, 0.045, false, 0.036, 0.06, -0.005); // internal box with a floor plate
       trigger(0.0, -0.01);
       if (!lk.lever) pistolGrip(0.07, 0.11, lk.wood && !ak ? m.wood : m.poly, ak ? 0.35 : 0.3);
+      else grip = { z: 0.1, ang: 0.75 }; // the wrist of a lever-action's stock
       // stock
       if (lk.wood) buttstock(0.11, 0.3, m.wood, 0.01);
       else if (ar) {
@@ -444,6 +449,7 @@ export function makeGunModel(def, vm = false) {
         trigger(0.0, 0.01);
         pistolGrip(0.02, 0.11, m.wood, 0.2);
         B(0.03, 0.09, 0.03, m.wood, 0, -0.03, -0.2); // fore grip
+        foreGrip = { z: -0.2, y: -0.03 };
         // an optic on the left side and flip-up irons
         B(0.03, 0.05, 0.12, m.dark, -0.06, 0.1, -0.08);
         irons(-0.3, 0.02, 0.128, 'post');
@@ -492,17 +498,34 @@ export function makeGunModel(def, vm = false) {
         irons(-0.36, 0.05, 0.1, 'post');
         muzzle.position.set(0, 0.06, -0.42);
       } else {
+        // the limbs bow away from the archer; their tips come back to the string
         const arc = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.016, 6, 18, Math.PI * 0.8), wood);
-        arc.rotation.set(0, Math.PI / 2, Math.PI / 2 + Math.PI * 0.1);
+        arc.rotation.set(0, -Math.PI / 2, Math.PI / 2 + Math.PI * 0.1);
         arc.position.set(0, 0.0, 0.25);
         g.add(arc);
-        B(0.035, 0.12, 0.04, m.dark, 0, 0.0, -0.12);
-        if (lk.compound) for (const sd of [-1, 1]) C(0.04, 0.04, 0.02, m.steel, 0, sd * 0.38, -0.08);
-        const str = box(0.003, 0.76, 0.003, m.white, 0, 0, 0.05);
-        g.add(str);
-        parts.string = str;
+        B(0.035, 0.12, 0.04, m.dark, 0, 0.0, -0.15);
+        if (lk.compound) for (const sd of [-1, 1]) C(0.04, 0.04, 0.02, m.steel, 0, sd * 0.38, 0.1);
+        // the string runs from each tip to the nock; draw(d) pulls it back
         const ar = B(0.006, 0.006, 0.6, m.steel, 0, 0.0, 0.08);
         parts.arrow = ar;
+        const halves = [1, -1].map((sd) => {
+          const h = box(0.003, 1, 0.003, m.white, 0, 0, 0);
+          g.add(h);
+          return { h, sd };
+        });
+        parts.string = halves[0].h;
+        parts.draw = (d) => {
+          const nz = 0.12 + d * 0.22;
+          for (const { h, sd } of halves) {
+            const vy = -sd * 0.4;
+            const vz = nz - 0.12;
+            h.position.set(0, sd * 0.2, (0.12 + nz) / 2);
+            h.scale.y = Math.hypot(vy, vz);
+            h.rotation.x = Math.atan2(vz, vy) - (sd > 0 ? Math.PI : 0);
+          }
+          ar.position.z = nz - 0.29;
+        };
+        parts.draw(1);
         sight = { y: 0.03, rear: 0.2, front: -0.12, kind: 'bow' };
         muzzle.position.set(0, 0.0, -0.24);
       }
@@ -541,6 +564,7 @@ export function makeGunModel(def, vm = false) {
       trigger(0.04, 0.0);
       pistolGrip(0.1, 0.11, m.poly);
       B(0.03, 0.09, 0.03, m.poly, 0, -0.04, -0.3);
+      foreGrip = { z: -0.3, y: -0.04 };
       buttstock(0.13, 0.18, m.poly);
       flame = glowSprite(0x4a8aff, 0.08, 0.9);
       flame.position.set(0, 0.04, -0.53);
@@ -607,5 +631,6 @@ export function makeGunModel(def, vm = false) {
   g.traverse((o) => {
     if (o.isMesh) o.castShadow = !vm;
   });
-  return { group: g, muzzle, port, spin, flame, parts, sight, scope: scopeInfo };
+  if (def.cat === 'melee') grip = { z: 0.02, ang: 0 };
+  return { group: g, muzzle, port, spin, flame, parts, sight, scope: scopeInfo, grip, foreGrip };
 }

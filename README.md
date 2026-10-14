@@ -74,7 +74,7 @@ You have **10 to 14 hours of daylight**, depending on the season. Only scavengin
 
 * **Map table: local map.** This shows the places around you, each with a danger rating, a search cost in hours, its number of floors and its likely loot. Locked vaults you know about and keys you've heard of are marked.
   * **Search it yourself.** You arrive on the street outside a building that looks like what it is (a house with a driveway, an office with a parking lot, a gas station with pumps, a skyscraper with a plaza and a fountain...). Leave by walking back to the signpost where you came in.
-  * **Bring survivors (and dogs) along.** They follow you from floor to floor, fight, and level up. If they die, their weapon is lost. Talk to one (**E**) to trade weapons hand to hand: swap what you're holding for theirs, or give them a gun you just found. You can also tell them to **stay here** or **follow me**; press **G** to order everyone at once. Anyone told to stay waits on their floor while you go up or down, and makes their own way home if you leave.
+  * **Bring survivors (and dogs) along.** They follow you from floor to floor, fight, and level up. If they die, their weapon is lost. Talk to one (**E**) to trade weapons hand to hand: swap what you're holding for theirs, or give them a gun you just found. You can also tell them to **stay here** or **follow me**; press **G** to order everyone at once. Anyone told to stay waits on their floor while you go up or down, and makes their own way home if you leave. **Anyone with a gun backs away from the dead when they get too close**: they walk backwards, away from everything near them, round walls and around you and each other, keeping the muzzle on the closest threat and still shooting. Melee fighters stand their ground and swing.
   * **Send a survivor alone.** Their odds are shown before you commit, based on their level, weapon and health and the location's danger. If they make it, they come back at dusk with everything inside (and any key they found). If not, they never come back. Dogs won't go alone.
 * **Map table: regional map.** Pick the next city (see above).
 * **Weapon rack and workbench.** Equip a primary and a secondary weapon, hand weapons to survivors, and spend scrap upgrading magazine size, range, damage, fire rate or accuracy. Each weapon can only be held by one person. Whatever you pick on the rack is compared stat by stat (damage, damage per second, fire rate, magazine, reload, range, accuracy) with the weapon in your hand, with green and red arrows for better and worse; [1] and [2] switch which hand to compare with. The numbers include your perks.
@@ -137,7 +137,7 @@ Food is scavenged like everything else: kitchens, fridges, gas station shelves a
 On the first night there is a 55% chance of a wave, and the chance rises by 1.5% every night. **Every seventh night is a blood moon**: the night turns red, a wave is certain, and it is 60% bigger with tougher zombies. If a wave comes:
 
 * Zombies cross the field and batter the barricade. Once it breaks, they come for you and your survivors.
-* You can't go beyond the barricade at night. Survivors hold positions behind it and fight with whatever you gave them. **Survivors never run out of ammo, but you do.** With launchers, grenades, molotovs or the flamethrower they're slow and careful: one shot every 6–8 seconds, flamethrower bursts with long pauses, and they won't fire where the blast would catch you or another survivor.
+* You can't go beyond the barricade at night. Survivors hold positions behind it and fight with whatever you gave them. If the barricade falls, those with guns back away from the dead and keep firing rather than letting them close in. **Survivors never run out of ammo, but you do.** With launchers, grenades, molotovs or the flamethrower they're slow and careful: one shot every 6–8 seconds, flamethrower bursts with long pauses, and they won't fire where the blast would catch you or another survivor.
 * Waves start big and grow fast. Every wave is larger than the last, its zombies are tougher, hit harder and move faster, and tougher types join sooner: runners from the first night, blood hounds and bloaters from the second, rotters and spitters from the third, riot zombies from the fourth and brutes from the fifth. A dangerous city sends bigger waves, and so does summer.
 * From the second wave on, the horde comes in **surges**: every few dozen zombies, a mass of them rushes the barricade along several lanes at once, in a frenzy.
 * **Spitters** stop short of the barricade and lob bile over it at whoever is defending it.
@@ -196,6 +196,7 @@ Guns are built from their real parts: frames and slides, receivers and rails, ha
 * **Aim down the sights** with the right mouse button. The rear sight comes up to your eye, the view narrows (and the mouse slows to match), and the spread tightens, but you walk slower. Scoped rifles fill the screen with the scope's reticle.
 * **Recoil kicks on springs.** The muzzle climbs, the view punches, and the gun slides back and rises. Slides snap back (and lock open on an empty magazine), pumps are racked, bolt actions and levers cycle, revolver cylinders turn, and spent brass and shotgun hulls fly out and bounce on the floor.
 * **Reloads are acted out by both hands**: the magazine drops out, a fresh one goes in, and the slide or charging handle is racked. Shotgun shells are fed one by one, a revolver is swung open, a rocket is pushed into the tube. Sprinting lowers the gun.
+* **Your hands are real hands**: gloved, with jointed fingers that wrap the grip, curl onto the trigger and squeeze it, cup a pistol, cradle a handguard, pinch a bowstring and make a fist round a bat. Arms reach from your shoulders with elbows that bend naturally. The gun sways with your aim, bobs with your stride, dips when you land and pulls in against walls. A bow is held canted at arm's length with the string drawn to the nock while an arrow is ready.
 
 Ranged weapons share six ammo types:
 
@@ -229,6 +230,17 @@ Anything hunting you in a building follows you up and down the stairs.
 | **Blind Brute** | wave 5+, dangerous buildings | Hunts by sound and smashes barricades. Shoot it and it charges. |
 
 Everyone, living or dead, is built to the same human scale as you: about 1.8 m tall.
+
+## How everyone moves
+
+Every character shares one skeleton (hips, spine, head and jaw, shoulders, elbows and wrists, hips, knees and ankles) and is animated procedurally, frame by frame:
+
+* **A real walk cycle.** Stride length sets the cadence, so feet don't skate. Heels strike, feet stay flat through the stance and push off at the toes, and knees bend through the swing and absorb each landing. The pelvis rises, sways and twists over the planted leg, the shoulders counter-rotate, the arms swing against the legs, and the head steadies itself. Walking blends into running (longer stride, more lean, pumping arms). Backing up plays the cycle backwards, strafing steps sideways, and turning on the spot shuffles the feet.
+* **The dead each have their own gait**: walkers drag a stiff leg and loll their heads, rotters barely lift their feet, runners sprint bent over and flailing, bloaters waddle, grunts and brutes stomp. Every zombie gets its own quirks: which leg drags, how its head hangs, how high its arms reach. Arms come up and reach for you when they are hunting.
+* **Attacks wind up and follow through**: an overhead two-handed slam, raking swipes from either side, and a lunging grab-and-bite. Each one has a gathering phase you can read, a fast strike and a slow recovery. Zombies bellow when they spot you; hounds gallop with their spines flexing and lunge with their jaws.
+* **Hits land.** Every shot or blow knocks the body away from where it came from (on springs, so the body settles back), headshots snap the head back, and heavy hits buckle the knees.
+* **Deaths depend on the blow**: shot from the front, a body topples backwards with its arms flung up; hit from behind, it pitches onto its face; hit from the side, it spins over; a melee kill can drop it to its knees before it slumps over; a blast throws it off its feet. Bodies land and settle with a bounce, and hounds and dogs roll onto their sides.
+* **Survivors and raiders really hold their weapons.** The gun is posed in the body's own space (shouldered and aimed at the target, at the low ready on the move, hanging at the side in camp) and both hands are put on it with inverse kinematics: the trigger hand on the grip, the other under the handguard, on a fore grip or cupping a pistol. They blade their stance and drop their head to the sights, and recoil pushes the gun back into the shoulder. Reloads tilt the gun while the off hand pulls the magazine, fetches a fresh one from the belt and slaps it home; shotguns are fed shell by shell. Melee weapons are swung in a full arc (chamber over the shoulder, a diagonal chop, follow-through and recovery), with two hands on bats, axes and sledges; grenades are thrown overhand; archers draw to the cheek; the unarmed put their fists up and jab. Dogs trot and gallop, sit when there's nothing to do, wag, bark and lunge to bite.
 
 ## Controls
 
@@ -275,7 +287,9 @@ The flashlight stops down when its beam lands on a wall or furniture right in fr
   * `src/survivors.js`: survivor and dog NPCs (camp, defend, follow, stay)
   * `src/combat.js`: hitscan, projectiles, explosions, fire, melee and tracers
   * `src/player.js`: the player controller, weapons, recoil and the flashlight's battery
-  * `src/gunModels.js` and `src/viewmodel.js`: weapon models, and the first-person hands and gun (aiming, recoil, reloads)
+  * `src/gunModels.js` and `src/viewmodel.js`: weapon models, and the first-person gun (aiming, recoil, reloads)
+  * `src/hands.js`: the first-person hands (jointed fingers, grip poses) and arms (two-bone IK)
+  * `src/anim.js`: third-person animation for everyone (gaits and walk cycles, attacks, hit reactions, deaths, four-legged gaits, and weapons held with IK)
   * `src/ui.js`: the HUD, minimaps, the US map and management panels
   * `src/actors.js`, `src/props.js`, `src/models.js`: low-poly models
   * `src/world.js`: geometry (thin walls and doorways), collision, line of sight and path-finding

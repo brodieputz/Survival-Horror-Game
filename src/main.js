@@ -1423,6 +1423,7 @@ class Game {
       // landing: a quick dip on a spring
       if (p.landKick) {
         this.dipV = (this.dipV || 0) - p.landKick * 1.7;
+        p.landKickVm = p.landKick;
         p.landKick = 0;
       }
       if (dt > 0) {
@@ -1462,20 +1463,7 @@ class Game {
 
     if (!vm) return;
     vm.group.visible = p.alive && !p.hidden && !scoped;
-    const bob = (this.bobAmt || 0) * (1 - ads * 0.85);
-    // the weapon lags behind the view as it turns, and rises and falls with breathing
-    this.swayX = damp(this.swayX || 0, clamp(-(p.turnX || 0) * 0.011, -0.045, 0.045), 10, dt);
-    this.swayY = damp(this.swayY || 0, clamp((p.turnY || 0) * 0.011, -0.035, 0.035), 10, dt);
-    const breath = Math.sin(this.time * 1.7) * 0.0035;
-    vm.group.position.set(Math.cos(p.bob * 0.5) * bob * 0.5 + this.swayX, Math.sin(p.bob) * bob * 0.6 - (p.crouch ? 0.02 : 0) + this.swayY + breath + (this.dip || 0) * 0.25, 0);
-    vm.group.rotation.set(this.swayY * 1.2, this.swayX * 1.6, this.swayX * 1.1);
-    if (ads > 0) {
-      // steady the sights: less sway and breathing when aiming
-      vm.group.position.multiplyScalar(1 - ads * 0.8);
-      vm.group.rotation.x *= 1 - ads * 0.8;
-      vm.group.rotation.y *= 1 - ads * 0.8;
-      vm.group.rotation.z *= 1 - ads * 0.9;
-    }
+    // sway, bob, breathing and the rest happen in the view model's animator
   }
 
   // How far ahead the beam lands: walls, floor or furniture, up to 6 m.

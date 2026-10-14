@@ -7,8 +7,10 @@ import { makeGrunt, makeBrute, makeHound, glowSprite } from './models.js';
 import { makeZombie, makeRaider } from './actors.js';
 import { makeGunModel } from './gunModels.js';
 import { WEAPONS } from './weapons.js';
-import { dampAngle, angleDiff, dist2D, mulberry32 } from './util.js';
+import { dampAngle, angleDiff, dist2D, mulberry32, damp, lerp } from './util.js';
 import { mul } from './perks.js';
+import { supportZ } from './viewmodel.js';
+import { GAITS, animState, trackMotion, locomote, crawl, attackPose, roarPose, quadGait, hitImpulse, hitPose, startDeath, deathPose, mountWeapon, holdWeapon } from './anim.js';
 
 export const ZOMBIES = {
   walker: { name: 'Walker', hp: 60, radius: 0.38, walk: 1.0, run: 2.2, wave: 2.0, sight: 0.85, fov: 2.0, stride: 1.2, dmg: 12, bdmg: 9, cd: 1.3, reach: 1.9, xp: 1 },
@@ -61,12 +63,14 @@ export class Enemy {
       const def = WEAPONS[this.gunId];
       this.gun = { def, dmg: Math.min(16, def.dmg * (def.pellets || 1) * 0.4), rate: Math.min(def.rate, 1.4), range: Math.min(def.range, 30) };
       const gm = makeGunModel(def);
-      gm.group.rotation.x = -Math.PI / 2;
-      this.model.gunMount.add(gm.group);
+      mountWeapon(this.model, gm, def, supportZ(def));
       this.gunModel = gm;
       this.aimT = 0;
     }
     this.model.hipY = this.model.hipY ?? this.model.hips?.position.y ?? 0.95;
+    // how high a body lies off the floor
+    this.model.deadLift ??= { brute: 0.42, grunt: 0.2, hound: 0.16, fat: 0.24 }[type] ?? 0.12;
+    this.anim = animState(rng());
     this.root = this.model.root;
     this.root.traverse((o) => {
       if (o.isMesh) o.userData.enemy = this;
@@ -342,7 +346,10 @@ export class Enemy {
     this.hp -= dmg;
     this.flinch = 1;
     const g = this.game;
-    if (!info.fire) g.audio.flesh(this.pos);
+    if (!info.fire) {
+      g.audio.flesh(this.pos);
+      this.knock(dmg, src, info);
+    }
     if (this.hp <= 0) {
       this.die(src, info);
       return;
@@ -381,6 +388,25 @@ export class Enemy {
     }
   }
 
+  // Knock the body away from where the blow came from.
+  knock(dmg, src, info) {
+    const st = this.anim;
+    const from = info.at || (src && typeof src === 'object' ? src.pos : null) || this.game.player.pos;
+    let dx = this.pos.x - from.x;
+    let dz = this.pos.z - from.z;
+    const l = Math.hypot(dx, dz) || 1;
+    dx /= l;
+    dz /= l;
+    const c = Math.cos(this.yaw);
+    const s = Math.sin(this.yaw);
+    const lx = dx * c - dz * s;
+    const lz = dx * s + dz * c;
+    st.lastHit.lx = lx;
+    st.lastHit.lz = lz;
+    const power = Math.min(1.5, Math.max(0.3, dmg / 40)) * (this.type === 'brute' ? 0.35 : this.type === 'fat' || this.type === 'rotter' ? 0.7 : 1);
+    hitImpulse(st, lx, lz, power * (info.explosive ? 1.6 : 1), !!info.head);
+  }
+
   ignite(seconds, dps, src) {
     if (!this.alive) return;
     if (src && src === this.game.player) {
@@ -404,6 +430,7 @@ export class Enemy {
     this.state = 'dead';
     this.deadT = 0;
     this.speedNow = 0;
+    startDeath(this.anim, info, this.model);
     this.burn = 0;
     if (this.fireSprite) this.fireSprite.visible = false;
     g.audio.monsterDeath(this.voice, this.pos);
@@ -900,6 +927,7 @@ export class Enemy {
           else this.speedNow = 0;
         }
         this.yaw = dampAngle(this.yaw, Math.atan2(nx, nz), 10, dt);
+        this.aimAt = tgt;
         this.aimT += dt;
         if (this.aimT > 0.9 && this.attackCd <= 0) this.raiderFire(tgt, d);
         if (d < this.s.reach && this.attackCd <= 0) this.attack(dt, tgt);
@@ -918,6 +946,7 @@ export class Enemy {
     const gun = this.gun;
     this.attackCd = (1 / gun.rate) * (0.9 + Math.random() * 0.7);
     this.attackAnim = 0.5;
+    this.anim.recoil.v += 7;
     let hit = Math.max(0.1, Math.min(0.48, 0.55 - d * 0.025));
     if (tgt === g.player) {
       if (tgt.running) hit *= 0.6;
@@ -933,7 +962,7 @@ export class Enemy {
       to.x += (Math.random() - 0.5) * 2.4;
       to.y += (Math.random() - 0.3) * 1.2;
       to.z += (Math.random() - 0.5) * 2.4;
-    } else tgt.damage(gun.dmg * this.mul.dmg, 'raider');
+    } else tgt.damage(gun.dmg * this.mul.dmg, 'raider', this);
     g.combat.tracer(from, to, 0xffc080);
     g.particles.burst(from, 3, 0xffd080, 1.5, 0.4);
     g.audio.weaponFire(gun.def, this.pos);
@@ -1010,7 +1039,7 @@ export class Enemy {
       let t = target;
       if (!t || !t.alive || (t.hidden ?? false) || dist2D(this.pos.x, this.pos.z, t.pos.x, t.pos.z) > this.s.reach) t = this.nearestHuman(this.s.reach);
       if (t) {
-        t.damage(this.s.dmg * this.mul.dmg, this.type);
+        t.damage(this.s.dmg * this.mul.dmg, this.type, this);
         if (this.type === 'hound') this.jaw = 1;
       }
     }
@@ -1135,6 +1164,7 @@ export class Enemy {
       if (!brute && Math.random() < 0.08) dmg *= 4;
       o.hp -= dmg;
       o.flinch = 1;
+      o.knock(dmg, this, {});
       this.game.audio.flesh(o.pos);
       if (o.hp <= 0) o.die(null, {});
     }
@@ -1175,90 +1205,131 @@ export class Enemy {
   // ------------------------------------------------------------ animation
   syncModel(dt) {
     const m = this.model;
-    this.root.position.x = this.pos.x;
-    this.root.position.z = this.pos.z;
-    this.root.position.y = 0;
-    this.root.rotation.y = this.yaw;
-    if (this.state === 'dormant' || this.state === 'rise') {
-      const e = this.state === 'dormant' ? 1 : Math.max(0, 1 - this.stateT / 0.85) ** 2;
-      this.root.rotation.order = 'YXZ';
-      this.root.rotation.x = -e * 1.45;
-      this.root.position.y = e * 0.12;
-      m.jaw.rotation.x = this.state === 'rise' ? 0.5 : 0.3;
-      for (const arm of m.arms) arm.sh.rotation.x = -1.2 * e - (1 - e) * 1.0;
-      return;
-    }
-    this.root.rotation.x = 0;
+    const st = this.anim;
+    this.root.position.set(this.pos.x, 0, this.pos.z);
+    this.root.rotation.set(0, this.yaw, 0);
+    if (this.state === 'dormant' || this.state === 'rise') return this.poseLurker(dt);
     if (this.state === 'dead') {
-      const t = Math.min(1, this.deadT / 0.7);
-      const e = t * t;
-      this.root.rotation.order = 'YXZ';
-      if (m.quad) this.root.rotation.z = e * 1.45;
-      else if (m.crawl) this.root.rotation.z = e * 0.6;
-      else this.root.rotation.x = -e * 1.45;
-      this.root.position.y = e * 0.12;
-      m.jaw.rotation.x = 0.4;
-      for (const arm of m.arms) arm.sh.rotation.x = -1.2 * e;
+      if (!st.death) startDeath(st, {}, m);
+      deathPose(m, st, dt);
       return;
     }
-    const spd = this.speedNow;
-    const k = this.type === 'hound' ? 2.8 : this.type === 'brute' ? 1.9 : 2.3;
-    this.phase += dt * Math.max(spd, 0.0) * k;
-    const amp = Math.min(1, spd / 3) * (this.type === 'hound' ? 0.8 : 0.65);
-    const s = Math.sin(this.phase);
-    for (const leg of m.legs) {
-      if (m.quad) {
-        leg.hip.rotation.x = Math.sin(this.phase * 1.6 + (leg.s > 0 ? 0 : Math.PI)) * amp;
-        leg.knee.rotation.x = Math.max(0, -Math.sin(this.phase * 1.6 + (leg.s > 0 ? 0 : Math.PI))) * amp * 0.9;
-      } else {
-        leg.hip.rotation.x = s * amp * leg.s;
-        leg.knee.rotation.x = Math.max(0, s * leg.s) * amp * 1.1;
-      }
-    }
+    trackMotion(st, this.pos, this.yaw, dt);
+    const t = this.game.time;
+    // attacks: gathering through the wind-up, then the blow
     const atk = this.attackAnim;
-    const reaching = this.mode === 'wave' || this.state === 'chase';
-    if (this.type === 'raider') {
-      // gun up when fighting, at the hip otherwise
-      const aiming = this.state === 'shoot';
-      for (const arm of m.arms) {
-        const gunArm = arm.fore.children.includes(m.gunMount);
-        if (aiming) {
-          arm.sh.rotation.x = -1.45 + atk * 0.25;
-          arm.sh.rotation.z = gunArm ? 0.05 : -arm.s * 0.5;
-          arm.fore.rotation.x = gunArm ? 0 : -0.3;
-        } else {
-          arm.sh.rotation.x = -Math.sin(this.phase) * Math.min(1, spd / 3) * 0.4 * arm.s - (gunArm ? 0.35 : 0);
-          arm.sh.rotation.z = arm.s * 0.06;
-          arm.fore.rotation.x = -0.2 - (gunArm ? 0.5 : 0);
-        }
+    if (this.windup > 0) {
+      if (!st.winding) {
+        st.winding = true;
+        st.atkVar = this.pickAttack();
       }
-      m.torso.rotation.x = m.baseLean + this.flinch * -0.3;
-      m.hips.position.y = m.hipY + Math.abs(Math.sin(this.phase)) * 0.03;
-      m.head.rotation.z = 0;
+    } else if ((st.winding && atk > 0.95) || atk > (st.prevAtk ?? 0) + 0.3) {
+      st.strikeT = 0;
+      if (!st.winding) st.atkVar = this.pickAttack();
+      st.winding = false;
+    } else st.winding = false;
+    st.prevAtk = atk;
+    st.strikeT = (st.strikeT ?? 9) + dt;
+    const wind = this.windup > 0 ? atk : 0;
+    const strike = st.strikeT < 0.55 ? st.strikeT / 0.55 : -1;
+    const roar = this.state === 'alert' || this.state === 'shriek' || this.state === 'bark' ? Math.sin(Math.min(1, this.stateT / (this.state === 'alert' ? 0.45 : 0.9)) * Math.PI) : 0;
+    if (m.quad) {
+      quadGait(m, st, dt, { size: 1.15 });
+      // a lunge with the jaws
+      const a = strike >= 0 ? Math.sin(Math.min(1, strike * 2) * Math.PI) : 0;
+      const w = wind * (1 - a);
+      m.hips.position.z = 0.3 * a - 0.08 * w;
+      m.torso.rotation.x += 0.12 * w - 0.12 * a;
+      m.head.rotation.x += -0.25 * w + 0.2 * a - 0.7 * roar;
+      for (const leg of m.legs) leg.knee.rotation.x += (leg.hip.position.z > 0 ? 1 : -1) * 0.4 * w;
+      hitPose(m, st, dt);
+      m.jaw.rotation.x = Math.max(this.jaw * 0.6, a * 0.7, roar * 0.8, 0.08 + Math.sin(t * 9) * 0.05);
+      if (m.tail) m.tail.rotation.set(-0.3 + 0.2 * st.gait, Math.sin(t * 9) * 0.4 * (1 - st.gait), 0);
       return;
+    }
+    if (m.crawl) crawl(m, st, dt);
+    else {
+      const hunting = this.mode === 'wave' || ['chase', 'charge', 'pullout', 'fight'].includes(this.state) || this.enraged > 0;
+      st.reach = damp(st.reach ?? 0, hunting ? 1 : 0, 3, dt);
+      const style = GAITS[this.type] || GAITS.walker;
+      locomote(m, st, dt, { style, reach: st.reach });
+    }
+    if (m.weapon) {
+      // a raider: gun up when fighting, at the ready otherwise
+      const tgt = this.state === 'shoot' ? this.aimAt : null;
+      let aim = null;
+      if (tgt?.pos) {
+        const dx = tgt.pos.x - this.pos.x;
+        const dz = tgt.pos.z - this.pos.z;
+        const c = Math.cos(this.yaw);
+        const s = Math.sin(this.yaw);
+        const ty = tgt === this.game.player ? tgt.eyeH - 0.35 : (tgt.model?.height ?? 1.8) * 0.6;
+        aim = (st.aimV ??= new THREE.Vector3()).set(dx * c - dz * s, ty, dx * s + dz * c);
+      }
+      hitPose(m, st, dt);
+      holdWeapon(m, st, { aim, stance: tgt && this.aimT > 0.25 ? 'aim' : 'ready' }, dt);
+      return;
+    }
+    if (!m.crawl) {
+      attackPose(m, st, wind, strike);
+      roarPose(m, st, roar);
+    } else if (strike >= 0) {
+      // a crawler snaps up at the ankles
+      const a = Math.sin(Math.min(1, strike * 2) * Math.PI);
+      m.torso.rotation.x -= 0.35 * a;
+      m.head.rotation.x += 0.3 * a;
+      for (const arm of m.arms) arm.sh.rotation.x -= 0.5 * a;
+    }
+    hitPose(m, st, dt);
+    // the head follows the prey; now and then a twitch
+    if (this.hunting && !m.crawl) {
+      const p = this.game.player;
+      const want = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
+      st.look = damp(st.look ?? 0, Math.max(-0.7, Math.min(0.7, angleDiff(this.yaw, want))), 5, dt);
+      m.head.rotation.y += st.look * 0.8;
+    }
+    if (Math.random() < dt * 0.6) this.twitch = 0.25;
+    this.twitch = Math.max(0, (this.twitch || 0) - dt);
+    if (this.twitch > 0) m.head.rotation.z += Math.sin(t * 60) * 0.2;
+    m.jaw.rotation.x = Math.max(this.jaw * 0.6, wind * 0.3, strike >= 0 && st.atkVar === 3 ? Math.sin(strike * Math.PI) * 0.7 : 0, roar * 0.65, 0.05 + Math.sin(t * 1.3 + st.q.jerk) * 0.05);
+    if (m.spit) m.spit.scale.setScalar(1 + Math.max(0, 1 - this.spitCd) * 0.35 + Math.sin(t * 3) * 0.04);
+  }
+
+  // Which blow comes next: a slam, a swipe from either side or a lunging bite.
+  pickAttack() {
+    if (this.type === 'brute') return Math.random() < 0.5 ? 0 : Math.random() < 0.5 ? 1 : 2;
+    if (this.type === 'grunt') return 1 + Math.floor(Math.random() * 2);
+    const r = Math.random();
+    return r < 0.25 ? 0 : r < 0.55 ? 1 : r < 0.85 ? 2 : 3;
+  }
+
+  // A lurker lies among the dead, then gets up.
+  poseLurker(dt) {
+    const m = this.model;
+    const st = this.anim;
+    const e = this.state === 'dormant' ? 1 : Math.max(0, 1 - this.stateT / 0.85) ** 2;
+    const mid = Math.sin((1 - e) * Math.PI);
+    this.root.rotation.order = 'YXZ';
+    this.root.rotation.x = -e * 1.45;
+    this.root.position.y = e * 0.12;
+    st.t += dt;
+    m.hips.position.set(0, m.hipY - mid * 0.25, 0);
+    m.hips.rotation.set(0, 0, 0);
+    m.torso.rotation.set(lerp(0.0, m.baseLean, 1 - e) + mid * 0.5, 0, 0);
+    m.head.rotation.set(-0.2 * e + 0.3 * mid, 0.7 * e * (st.q.tilt > 0 ? 1 : -1), 0.1 * e);
+    m.jaw.rotation.x = this.state === 'rise' ? 0.5 : 0.25;
+    for (const leg of m.legs) {
+      leg.hip.rotation.set(-mid * 1.0, 0, leg.s * 0.08 * e);
+      leg.knee.rotation.x = 0.1 * e + mid * 1.6;
+      if (leg.ankle) leg.ankle.rotation.x = 0.35 * e - mid * 0.4;
     }
     for (const arm of m.arms) {
-      if (m.crawl) {
-        arm.sh.rotation.x = -2.4 + Math.sin(this.phase * 2 + (arm.s > 0 ? 0 : Math.PI)) * 0.6 - atk * 0.4;
-        arm.fore.rotation.x = -0.4;
-        continue;
-      }
-      const swing = -s * amp * 0.6 * arm.s;
-      arm.sh.rotation.x = swing - atk * 2.2 - (reaching ? (this.type === 'walker' || this.type === 'rotter' ? 1.3 : 0.5) : 0);
-      arm.sh.rotation.z = arm.s * (0.08 + atk * 0.25);
-      arm.fore.rotation.x = -0.25 - atk * 0.6;
+      // arms lying loose, then pushing the body up off the floor
+      arm.sh.rotation.set(lerp(0.15, -0.4, mid) * (e > 0.99 ? 1 : 1), 0, arm.s * lerp(0.35, 0.25, mid));
+      arm.fore.rotation.set(-0.25 - mid * 0.6, 0, 0);
+      if (arm.wrist) arm.wrist.rotation.set(0.3 - mid * 0.9, 0, 0);
     }
-    const t = this.game.time;
-    const lean = m.baseLean + (spd > 3.5 ? 0.15 : 0) + this.flinch * -0.3;
-    m.torso.rotation.x = lean + Math.sin(t * 1.7 + this.phase) * 0.03;
-    m.hips.position.y = m.hipY + (m.crawl ? 0 : Math.abs(Math.sin(this.phase)) * 0.04);
-    if (Math.random() < 0.01) this.twitch = 0.25;
-    this.twitch = Math.max(0, (this.twitch || 0) - dt);
-    m.head.rotation.z = this.twitch > 0 ? Math.sin(t * 60) * 0.25 : Math.sin(t * 0.7) * 0.08;
-    m.jaw.rotation.x = Math.max(this.jaw, atk * 0.5) * 0.6;
-    if (m.tail) m.tail.rotation.y = Math.sin(t * 9) * 0.4;
-    if (m.quad) m.head.rotation.x = -this.jaw * 0.5;
-    if (m.spit) m.spit.scale.setScalar(1 + Math.max(0, 1 - this.spitCd) * 0.35 + Math.sin(t * 3) * 0.04);
+    hitPose(m, st, dt);
   }
 
   dispose() {}
